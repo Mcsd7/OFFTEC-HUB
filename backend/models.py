@@ -84,6 +84,7 @@ class CodexRunRequest(BaseModel):
     path: str = Field(min_length=1, max_length=2048)
     prompt: str = Field(min_length=1, max_length=12000)
     confirmed: bool = False
+    method: str = Field(default="auto", regex=r"^(auto|main|fallback)$")
 
 class AiProgramRequest(BaseModel):
     path: str = Field(min_length=1, max_length=2048)

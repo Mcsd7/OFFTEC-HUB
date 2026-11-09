@@ -555,7 +555,7 @@ async def codex_test(request: CodexRunRequest):
         raise HTTPException(409, "Confirme o teste de leitura no workspace temporário.")
     project = _project_path(request.path)
     from .services import codex_tasks
-    task_id = codex_tasks.start(project, "Responda somente CODEX_TEST_OK. Não altere arquivos nem execute comandos.", test_only=True)
+    task_id = codex_tasks.start(project, "Responda somente CODEX_TEST_OK. Não altere arquivos nem execute comandos.", test_only=True, method=request.method)
     return {"task_id": task_id, "status": "running"}
 
 @app.post("/api/v1/codex/run", dependencies=[Depends(authorize)])
@@ -564,7 +564,7 @@ async def codex_run(request: CodexRunRequest):
         raise HTTPException(409, "Confirme a tarefa Codex antes de criar e modificar o workspace.")
     project = _project_path(request.path)
     from .services import codex_tasks
-    task_id = codex_tasks.start(project, request.prompt, test_only=False)
+    task_id = codex_tasks.start(project, request.prompt, test_only=False, method=request.method)
     return {"task_id": task_id, "status": "running"}
 
 @app.get("/api/v1/codex/tasks/{task_id}", dependencies=[Depends(authorize)])

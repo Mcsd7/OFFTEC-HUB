@@ -465,16 +465,82 @@ def test_offtec_ai_generation_can_be_cancelled_cooperatively(monkeypatch):
         assert "Geração cancelada" in conversation["messages"][-1]["content"]
 
 
+def _codex_status(main, fallback=None, active="main"):
+    methods = [dict(id="main", functional=True, authenticated=True, entry=str(main), kind="termux_launcher",
+                    features=["jsonl_progress", "workspace_write_sandbox", "exec", "ephemeral_test"])]
+    if fallback:
+        methods.append(dict(id="fallback", functional=True, authenticated=True, entry=str(fallback), kind="native",
+                            bin_dir=str(fallback.parent), features=["jsonl_progress", "workspace_write_sandbox", "exec", "ephemeral_test"]))
+    return {"functional": True, "auth_material_present": True, "authenticated": True,
+            "active_method": active, "methods": methods, "reason": "Pronto"}
+
+
+def _fake_codex_executable(path, source):
+    import sys
+    path.write_text(f"#!{sys.executable}\n" + source, encoding="utf-8")
+    path.chmod(0o700)
+    return path
+
+
+def test_codex_discovers_termux_launcher_and_direct_native_fallback(tmp_path, monkeypatch):
+    import json
+    from backend import codex_cli
+    package = tmp_path / "@scope" / "codex-cli"
+    bindir = package / "bin"
+    bindir.mkdir(parents=True)
+    shim = bindir / "codex.js"
+    shim.write_text("// test shim", encoding="utf-8")
+    (package / "package.json").write_text(json.dumps({"version": "0.163.0-termux.2"}), encoding="utf-8")
+    cli = '''import sys
+a=sys.argv[1:]
+if a == ["--version"]: print("codex-cli 0.163.0")
+elif a == ["--help"]: print("Commands:\\n  exec  Run Codex")
+elif a == ["exec","--help"]: print("Usage: codex exec --json --sandbox workspace-write -C --ephemeral")
+elif a == ["login","status"]: print("Logged in using ChatGPT")
+'''
+    _fake_codex_executable(bindir / "codex", cli)
+    _fake_codex_executable(bindir / "codex.bin", cli)
+    monkeypatch.setattr(codex_cli, "_which_codex", lambda: shim)
+    candidates = codex_cli._candidates()
+    assert candidates["main"]["entry"] == str(bindir / "codex")
+    assert candidates["fallback"]["entry"] == str(bindir / "codex.bin")
+    status = codex_cli.inspect()
+    assert status["version"] == "codex-cli 0.163.0"
+    assert status["authenticated"] is True
+    assert status["active_method"] == "main"
+    assert "ephemeral_test" in status["methods"][0]["features"]
+
+
+def test_codex_authentication_check_does_not_accept_not_logged_in(tmp_path, monkeypatch):
+    from backend import codex_cli
+    executable = _fake_codex_executable(tmp_path / "codex", '''import sys
+a=sys.argv[1:]
+if a == ["--version"]: print("codex-cli 0.163.0")
+elif a == ["--help"]: print("Commands: exec")
+elif a == ["exec","--help"]: print("codex exec --json --sandbox workspace-write")
+elif a == ["login","status"]: print("Not logged in")
+''')
+    monkeypatch.setattr(codex_cli, "_candidates", lambda: {"main": {"id": "main", "label": "test", "entry": str(executable), "kind": "path"}})
+    status = codex_cli.inspect()
+    assert status["functional"] is True
+    assert status["authenticated"] is False
+    assert status["methods"][0]["auth_detail"] == "Codex respondeu, mas não confirmou uma sessão autenticada."
+
+
 def test_codex_cli_inspects_help_and_detects_required_features(monkeypatch):
-    import os
     import subprocess
     from backend import codex_cli
-    monkeypatch.setattr(codex_cli.shutil, "which", lambda name: "/usr/bin/codex")
-    monkeypatch.setenv("CODEX_API_KEY", "dummy-only-presence")
+    candidates = {
+        "path_cli": {"id": "path_cli", "label": "PATH shim", "entry": "/usr/bin/codex.js", "kind": "path"},
+        "main": {"id": "main", "label": "Termux launcher", "entry": "/pkg/bin/codex", "kind": "termux_launcher"},
+        "fallback": {"id": "fallback", "label": "Native fallback", "entry": "/pkg/bin/codex.bin", "kind": "native", "bin_dir": "/pkg/bin"},
+    }
+    monkeypatch.setattr(codex_cli, "_candidates", lambda: candidates)
 
     def fake_run(command, **kwargs):
         if command[-1] == "--version": return subprocess.CompletedProcess(command, 0, "codex 9.8.7\n", "")
-        if command[-1] == "--help" and command[1] == "exec": return subprocess.CompletedProcess(command, 0, "Usage: codex exec [--json] [--sandbox workspace-write]", "")
+        if command[-1] == "--help" and "exec" in command: return subprocess.CompletedProcess(command, 0, "Usage: codex exec [--json] [--sandbox workspace-write] --ephemeral -C", "")
+        if command[-2:] == ["login", "status"]: return subprocess.CompletedProcess(command, 0, "Logged in using ChatGPT", "")
         return subprocess.CompletedProcess(command, 0, "Commands: exec review", "")
 
     monkeypatch.setattr(codex_cli.subprocess, "run", fake_run)
@@ -482,9 +548,12 @@ def test_codex_cli_inspects_help_and_detects_required_features(monkeypatch):
     assert status["functional"] is True
     assert status["version"] == "codex 9.8.7"
     assert status["auth_material_present"] is True
+    assert status["active_method"] == "main"
+    assert status["methods"][1]["authenticated"] is True
 
 
 def test_codex_run_uses_isolated_copy_and_never_disables_approvals(tmp_path, monkeypatch):
+    import io
     import json
     import subprocess
     from backend import codex_cli
@@ -492,8 +561,10 @@ def test_codex_run_uses_isolated_copy_and_never_disables_approvals(tmp_path, mon
     source.mkdir()
     original = source / "app.py"
     original.write_text("original", encoding="utf-8")
-    monkeypatch.setattr(codex_cli, "inspect", lambda: {"functional": True, "auth_material_present": True})
-    monkeypatch.setattr(codex_cli.shutil, "which", lambda name: "/usr/bin/codex")
+    entry = str(tmp_path / "codex")
+    monkeypatch.setattr(codex_cli, "inspect", lambda: _codex_status(Path(entry)))
+    monkeypatch.setattr(codex_cli, "CODEX_WORKSPACES", tmp_path / "workspaces")
+    monkeypatch.setattr(codex_cli, "RUN_DIR", tmp_path / "runs")
 
     def copy_project(src, dest):
         dest.mkdir(parents=True)
@@ -504,9 +575,13 @@ def test_codex_run_uses_isolated_copy_and_never_disables_approvals(tmp_path, mon
 
     class FakeProcess:
         returncode = 0
-        def communicate(self, timeout=None):
+        pid = 1234
+        def __init__(self):
             event = {"type": "item.completed", "item": {"type": "agent_message", "text": "Codex response"}}
-            return json.dumps(event) + "\n", ""
+            self.stdout = io.StringIO(json.dumps(event) + "\n")
+            self.stderr = io.StringIO("")
+        def poll(self): return self.returncode
+        def wait(self, timeout=None): return self.returncode
         def terminate(self): self.returncode = -15
         def kill(self): self.returncode = -9
 
@@ -521,12 +596,146 @@ def test_codex_run_uses_isolated_copy_and_never_disables_approvals(tmp_path, mon
 
     monkeypatch.setattr(codex_cli.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(codex_cli.subprocess, "run", fake_run)
-    result = codex_cli.run_task(source, "Fix app", confirmed=True)
+    result = codex_cli.run_task(source, "Fix app", confirmed=True, method="main")
     assert result["status"] == "success"
     assert result["response"] == "Codex response"
     assert result["files"] == [" M app.py"]
     assert original.read_text() == "original"
     assert commands[0][1:5] == ["exec", "--json", "--sandbox", "workspace-write"]
+    assert commands[0][-3] == "-C"
+
+
+def test_codex_auto_uses_fallback_and_returns_modified_file_manifest(tmp_path, monkeypatch):
+    import json
+    from backend import codex_cli
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "README.md").write_text("source", encoding="utf-8")
+    original = source / "original.txt"
+    original.write_text("preserve original", encoding="utf-8")
+    argv_record = tmp_path / "fallback-argv.json"
+    native = _fake_codex_executable(tmp_path / "codex.bin", f'''import json,sys
+a=sys.argv[1:]
+open({str(argv_record)!r},"w").write(json.dumps(a))
+w=a[a.index("-C")+1]
+open(w+"/new.txt","w").write("created in copy")
+print(json.dumps({{"type":"item.completed","item":{{"type":"agent_message","text":"Fallback completed"}}}}),flush=True)
+''')
+    diagnostic = _codex_status(tmp_path / "main-not-functional", native, active="fallback")
+    diagnostic["methods"][0]["functional"] = False
+    diagnostic["methods"][0]["authenticated"] = False
+    monkeypatch.setattr(codex_cli, "inspect", lambda: diagnostic)
+    monkeypatch.setattr(codex_cli, "CODEX_WORKSPACES", tmp_path / "workspaces")
+    monkeypatch.setattr(codex_cli, "RUN_DIR", tmp_path / "runs")
+    result = codex_cli.run_task(source, "Create a file", confirmed=True, method="auto")
+    argv = json.loads(argv_record.read_text(encoding="utf-8"))
+    assert result["method"] == "fallback"
+    assert result["response"] == "Fallback completed"
+    assert any("new.txt" in item for item in result["files"])
+    assert (Path(result["workspace"]) / "new.txt").read_text(encoding="utf-8") == "created in copy"
+    assert original.read_text(encoding="utf-8") == "preserve original"
+    assert argv[argv.index("--sandbox") + 1] == "workspace-write"
+    assert "--yolo" not in argv and "--full-auto" not in argv
+
+
+def test_codex_retries_fallback_only_when_primary_cannot_spawn(tmp_path, monkeypatch):
+    import json
+    from backend import codex_cli
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "README.md").write_text("source", encoding="utf-8")
+    broken = tmp_path / "broken-main"
+    broken.write_text("#!/missing/codex-interpreter\n", encoding="utf-8")
+    broken.chmod(0o700)
+    started = tmp_path / "fallback-started"
+    native = _fake_codex_executable(tmp_path / "codex.bin", f'''import json,sys
+open({str(started)!r},"w").write("yes")
+print(json.dumps({{"type":"turn.completed"}}),flush=True)
+''')
+    monkeypatch.setattr(codex_cli, "inspect", lambda: _codex_status(broken, native))
+    monkeypatch.setattr(codex_cli, "CODEX_WORKSPACES", tmp_path / "workspaces")
+    monkeypatch.setattr(codex_cli, "RUN_DIR", tmp_path / "runs")
+    result = codex_cli.run_task(source, "No-op", confirmed=True)
+    assert result["status"] == "success"
+    assert result["method"] == "fallback"
+    assert "não iniciou" in result["launch_fallback_reason"]
+    assert started.is_file()
+
+
+def test_codex_connection_probe_uses_read_only_sandbox_and_ephemeral_session(tmp_path, monkeypatch):
+    import json
+    from backend import codex_cli
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "README.md").write_text("probe", encoding="utf-8")
+    argv_file = tmp_path / "argv.json"
+    executable = _fake_codex_executable(tmp_path / "codex", f'''import json,sys
+a=sys.argv[1:]
+open({str(argv_file)!r},"w").write(json.dumps(a))
+print(json.dumps({{"type":"turn.completed"}}),flush=True)
+''')
+    monkeypatch.setattr(codex_cli, "inspect", lambda: _codex_status(executable))
+    monkeypatch.setattr(codex_cli, "CODEX_WORKSPACES", tmp_path / "workspaces")
+    monkeypatch.setattr(codex_cli, "RUN_DIR", tmp_path / "runs")
+    result = codex_cli.run_task(source, "Read-only connectivity check", confirmed=True, test_only=True)
+    argv = json.loads(argv_file.read_text(encoding="utf-8"))
+    assert result["status"] == "success"
+    assert argv[argv.index("--sandbox") + 1] == "read-only"
+    assert "--ephemeral" in argv
+    assert "--yolo" not in argv and "--full-auto" not in argv
+
+
+def test_codex_nonzero_exit_returns_detailed_but_redacted_error(tmp_path, monkeypatch):
+    from backend import codex_cli
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "README.md").write_text("source", encoding="utf-8")
+    executable = _fake_codex_executable(tmp_path / "codex", '''import sys
+print('{"type":"turn.failed","error":{"message":"API_KEY=should-not-leak"}}',flush=True)
+print("access_token=should-not-leak",file=sys.stderr,flush=True)
+sys.exit(7)
+''')
+    monkeypatch.setattr(codex_cli, "inspect", lambda: _codex_status(executable))
+    monkeypatch.setattr(codex_cli, "CODEX_WORKSPACES", tmp_path / "workspaces")
+    monkeypatch.setattr(codex_cli, "RUN_DIR", tmp_path / "runs")
+    result = codex_cli.run_task(source, "Fail", confirmed=True)
+    assert result["status"] == "error" and result["returncode"] == 7
+    assert "turn.failed" in result["stdout_tail"]
+    assert "[REDACTED]" in result["stderr_tail"]
+    assert "should-not-leak" not in result["stdout_tail"] + result["stderr_tail"]
+
+
+def test_codex_cancellation_and_stderr_capture_redact_credentials(tmp_path, monkeypatch):
+    import threading
+    import time
+    from backend import codex_cli
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "README.md").write_text("source", encoding="utf-8")
+    started = tmp_path / "started"
+    executable = _fake_codex_executable(tmp_path / "codex", f'''import sys,time
+open({str(started)!r},"w").write("yes")
+print("API_KEY=do-not-expose",file=sys.stderr,flush=True)
+print('{{"type":"turn.started"}}',flush=True)
+time.sleep(30)
+''')
+    monkeypatch.setattr(codex_cli, "inspect", lambda: _codex_status(executable))
+    monkeypatch.setattr(codex_cli, "CODEX_WORKSPACES", tmp_path / "workspaces")
+    monkeypatch.setattr(codex_cli, "RUN_DIR", tmp_path / "runs")
+    cancel = threading.Event()
+    result_box = {}
+    worker = threading.Thread(target=lambda: result_box.setdefault("result", codex_cli.run_task(source, "Wait", True, cancel_event=cancel)))
+    worker.start()
+    for _ in range(40):
+        if started.exists(): break
+        time.sleep(0.05)
+    cancel.set()
+    worker.join(8)
+    assert not worker.is_alive()
+    result = result_box["result"]
+    assert result["status"] == "cancelled"
+    assert "[REDACTED]" in result["stderr_tail"]
+    assert "do-not-expose" not in result["stderr_tail"]
 
 
 def test_codex_endpoints_require_confirmation_and_report_current_environment():
@@ -534,8 +743,12 @@ def test_codex_endpoints_require_confirmation_and_report_current_environment():
         status = c.get("/api/v1/codex/status", headers=auth())
         assert status.status_code == 200
         assert status.json()["installed"] is True
+        assert {item["id"] for item in status.json()["methods"]} >= {"main", "fallback"}
+        assert status.json()["active_method"] in {"main", "fallback"}
         refused = c.post("/api/v1/codex/run", headers=auth(), json={"path": "/tmp", "prompt": "inspect", "confirmed": False})
         assert refused.status_code == 409
+        invalid_method = c.post("/api/v1/codex/run", headers=auth(), json={"path": "/tmp", "prompt": "inspect", "confirmed": True, "method": "shell"})
+        assert invalid_method.status_code == 422
 
 
 def test_codex_workspace_copy_omits_common_secret_files(tmp_path):
@@ -557,7 +770,7 @@ def test_codex_task_cancel_endpoint_sets_cooperative_process_cancel(tmp_path, mo
     from backend import codex_cli
     started, release = threading.Event(), threading.Event()
 
-    def fake_run(project, prompt, confirmed, test_only=False, cancel_event=None):
+    def fake_run(project, prompt, confirmed, test_only=False, cancel_event=None, method="auto", on_update=None):
         started.set()
         release.wait(4)
         assert cancel_event.is_set()
