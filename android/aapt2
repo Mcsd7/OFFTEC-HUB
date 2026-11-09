@@ -1,0 +1,4 @@
+#!/data/data/com.termux/files/usr/bin/bash
+set -e
+LD_PRELOAD=/data/data/com.termux/files/usr/lib/libc++_shared.so \
+  exec /data/data/com.termux/files/usr/bin/aapt2 "$@"

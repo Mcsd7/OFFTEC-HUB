@@ -1,0 +1,10 @@
+.venv/
+.gradle-home/
+android/.gradle/
+android/.gradle-home/
+android/local.properties
+android/app/build/
+backend/data/
+backend/logs/*.log
+__pycache__/
+*.py[cod]
