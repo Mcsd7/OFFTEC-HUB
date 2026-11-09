@@ -2,7 +2,7 @@
 
 ## Estado atual
 
-- Etapa atual: **3 — Assistência IA e operações**.
+- Etapa atual: **4 — ReaDroid com reconstrução assistida por IA**.
 - Etapa 1: concluída no checkpoint `39e2619`. Etapa 2: concluída e confirmada no commit imediatamente anterior ao início da Etapa 3.
 - Não iniciar a etapa 2 até o checkpoint da etapa 1 estar confirmado.
 
@@ -61,3 +61,11 @@
 - Testes da Etapa 2: 16 passaram; JavaScript validado com `node --check`; Python validado com `py_compile`.
 - Durante a primeira execução da suíte houve escrita indevida em `backend/data/ai-provider.json` por causa de monkeypatch incompleto no teste legado. O backup confirma que o arquivo não existia; o arquivo gerado pelo teste foi removido e o teste foi corrigido para injetar o caminho temporário nos dois módulos.
 - Próxima atividade: Etapa 3 — registro de operações contextualizadas com schemas, allowlist e confirmação.
+
+### Etapa 3 — concluída
+
+- Registro central com descrições, schemas, permissões e requisito de confirmação.
+- Operações reais registradas: métricas, inventário de módulos, análise de projeto via PortAI, inspeção do APK enviado via ReaDroid e criação confirmada de projeto vazio.
+- Endpoint protegido publica o catálogo e valida/executa somente IDs registrados; não aceita comandos shell. Registra sucesso/rejeição/falha no histórico.
+- 18 testes passaram, incluindo execução de métricas/módulos/análise e rejeição de parâmetros extras/operação desconhecida/confirmação ausente.
+- Próximo: implementar plano/workspace isolado de reconstrução assistida; ferramenta ainda não é automaticamente chamada pelo chat, que será integrado na Etapa 5.

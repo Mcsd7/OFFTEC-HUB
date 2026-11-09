@@ -16,3 +16,9 @@
 - API nunca retorna API Key; erros de autenticação/modelo são claros e não incluem corpos de resposta do provedor.
 - Frontend permite adicionar, editar, testar, selecionar padrão e remover.
 - Testes: 16 passaram; `node --check` e `py_compile` passaram. Sem credenciais presentes para teste real externo.
+
+## 2026-11-09 — Etapa 3
+
+- Criado registro central de operações IA com schemas estritos, allowlist, permissões e confirmação em escrita.
+- Adicionados endpoints de catálogo e execução autenticados, com resultados reais e histórico.
+- Testes: 18 passaram; compilação Python passou.

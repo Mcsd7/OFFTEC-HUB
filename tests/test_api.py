@@ -228,6 +228,37 @@ def test_ai_provider_rejects_unsafe_urls_and_sanitizes_auth_errors(tmp_path, mon
         assert "must-not-leak" not in denied.text
 
 
+def test_ai_tool_registry_executes_real_read_operations_and_rejects_unknown_parameters():
+    with client() as c:
+        catalog = c.get("/api/v1/ai/tools", headers=auth())
+        assert catalog.status_code == 200
+        tools = {item["id"]: item for item in catalog.json()["tools"]}
+        assert tools["project.create"]["confirmation_required"] is True
+        assert tools["system.snapshot"]["confirmation_required"] is False
+        result = c.post("/api/v1/ai/tools/execute", headers=auth(), json={"tool_id": "system.snapshot", "arguments": {}})
+        assert result.status_code == 200 and result.json()["executed"] is True
+        assert result.json()["result"]["cpu_cores"] > 0
+        modules = c.post("/api/v1/ai/tools/execute", headers=auth(), json={"tool_id": "modules.list", "arguments": {}})
+        assert modules.status_code == 200 and modules.json()["result"]["modules"]
+        extra = c.post("/api/v1/ai/tools/execute", headers=auth(), json={"tool_id": "system.snapshot", "arguments": {"shell": "id"}})
+        assert extra.status_code == 422
+        unknown = c.post("/api/v1/ai/tools/execute", headers=auth(), json={"tool_id": "shell.run", "arguments": {"cmd": "id"}})
+        assert unknown.status_code == 404
+
+
+def test_ai_tool_confirmation_and_project_analysis(tmp_path, monkeypatch):
+    project = tmp_path / "real-project"
+    project.mkdir()
+    (project / "README.md").write_text("project evidence", encoding="utf-8")
+    with client() as c:
+        denied = c.post("/api/v1/ai/tools/execute", headers=auth(), json={"tool_id": "project.create", "arguments": {"name": "NeedsConfirm"}})
+        assert denied.status_code == 409
+        analysis = c.post("/api/v1/ai/tools/execute", headers=auth(), json={"tool_id": "project.analyze", "arguments": {"path": str(project)}})
+        assert analysis.status_code == 200, analysis.text
+        assert analysis.json()["executed"] is True
+        assert analysis.json()["result"]["tool"] == "OffTec PortAI"
+
+
 def test_ai_program_applies_only_relative_files_inside_selected_project(tmp_path, monkeypatch):
     from backend import ai_coding
     project = tmp_path / "workspace"

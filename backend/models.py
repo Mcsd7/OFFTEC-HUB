@@ -48,6 +48,11 @@ class AiProviderTest(BaseModel):
     api_key: str | None = Field(default=None, max_length=512)
     base_url: str = Field(default="", max_length=500)
 
+class ToolExecution(BaseModel):
+    tool_id: str = Field(min_length=1, max_length=80)
+    arguments: dict = Field(default_factory=dict)
+    confirmed: bool = False
+
 class AiProgramRequest(BaseModel):
     path: str = Field(min_length=1, max_length=2048)
     prompt: str = Field(min_length=1, max_length=12000)

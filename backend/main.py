@@ -16,9 +16,10 @@ from .config import FRONTEND_DIR, LOG_DIR, MAX_UPLOAD_BYTES, TRANSLATION_DIR, UP
 from .core.events import events
 from .core.system import snapshot
 from .database import store
-from .models import AiProviderConfig, AiProviderUpsert, AiProviderTest, AiProgramRequest, ProjectCreate, ProjectTestRequest, ApkOperation, DnsRequest, PackageInstall, ProjectOperation, TranslationApply, TranslationPreview
+from .models import AiProviderConfig, AiProviderUpsert, AiProviderTest, AiProgramRequest, ProjectCreate, ProjectTestRequest, ToolExecution, ApkOperation, DnsRequest, PackageInstall, ProjectOperation, TranslationApply, TranslationPreview
 from . import ai_coding
 from . import providers as provider_store
+from . import tool_registry
 from .modules.manager import modules, load_netscope, load_readroid, load_portai
 from .security import session_token
 from .services.tasks import run_blocking
@@ -336,6 +337,23 @@ async def ai_provider_test(request: AiProviderTest):
         raise HTTPException(400, str(exc))
     except RuntimeError as exc:
         return {"connected": False, "message": str(exc)}
+
+@app.get("/api/v1/ai/tools", dependencies=[Depends(authorize)])
+def ai_tools_catalog():
+    return {"tools": tool_registry.describe_tools()}
+
+@app.post("/api/v1/ai/tools/execute", dependencies=[Depends(authorize)])
+async def ai_tool_execute(request: ToolExecution):
+    try:
+        outcome = await tool_registry.execute(request.tool_id, request.arguments, request.confirmed)
+        store.record("ai_tools", request.tool_id, "success", outcome)
+        return {"executed": True, **outcome}
+    except HTTPException as exc:
+        store.record("ai_tools", request.tool_id, "rejected", {"status": exc.status_code, "detail": exc.detail})
+        raise
+    except Exception as exc:
+        store.record("ai_tools", request.tool_id, "error", {"error": type(exc).__name__})
+        raise HTTPException(422, f"A operação falhou: {type(exc).__name__}.") from None
 
 @app.put("/api/v1/ai/config", dependencies=[Depends(authorize)])
 def ai_config_save(request: AiProviderConfig):

@@ -32,3 +32,9 @@
 - `python -m py_compile backend/providers.py backend/ai_coding.py backend/main.py backend/models.py`: passou.
 - Teste real com credencial: não executado; não havia configuração de provedor no backup inicial.
 - Sem arquivo de configuração de provedor no estado final do teste; dados da Etapa 1 preservados.
+
+## Etapa 3 — Operações IA
+
+- `python -m pytest -q`: **18 passed**, 35 avisos de depreciação.
+- Cobertura nova: catálogo do registro, chamadas reais de métricas/módulos/análise de projeto, schemas sem parâmetros adicionais, operação não registrada e confirmação obrigatória para criação de projeto.
+- `python -m py_compile backend/tool_registry.py backend/main.py backend/models.py`: passou.
