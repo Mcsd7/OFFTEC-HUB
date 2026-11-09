@@ -260,6 +260,27 @@ def test_ai_tool_confirmation_and_project_analysis(tmp_path, monkeypatch):
         assert analysis.json()["result"]["tool"] == "OffTec PortAI"
 
 
+def test_registered_project_edit_requires_confirmation_and_writes_real_file(tmp_path, monkeypatch):
+    from backend import ai_coding
+    from backend.main import app
+    monkeypatch.setattr(ai_coding, "get_config", lambda: {"configured": True})
+    monkeypatch.setattr(ai_coding, "build_project", lambda project, request: _write_tool_file(project))
+    project = tmp_path / "editable"
+    project.mkdir()
+    with client() as c:
+        args = {"path": str(project), "request": "Crie uma tela de boas-vindas"}
+        denied = c.post("/api/v1/ai/tools/execute", headers=auth(), json={"tool_id": "project.edit", "arguments": args})
+        assert denied.status_code == 409
+        done = c.post("/api/v1/ai/tools/execute", headers=auth(), json={"tool_id": "project.edit", "arguments": args, "confirmed": True})
+        assert done.status_code == 200, done.text
+        assert (project / "welcome.py").read_text() == "print('hello')"
+
+
+def _write_tool_file(project):
+    (project / "welcome.py").write_text("print('hello')", encoding="utf-8")
+    return {"changed_files": ["welcome.py"], "file_count": 1}
+
+
 def test_realdroid_rebuild_plan_and_apply_use_isolated_copy(tmp_path, monkeypatch):
     from backend import ai_coding
     from backend.config import UPLOAD_DIR
@@ -309,6 +330,122 @@ def test_realdroid_rebuild_plan_and_apply_use_isolated_copy(tmp_path, monkeypatc
 def _write_rebuild_file(workspace):
     (workspace / "modified.txt").write_text("AI change", encoding="utf-8")
     return {"summary": "Applied to isolated workspace", "changed_files": ["modified.txt"], "file_count": 1}
+
+
+def test_offtec_ai_persistent_conversation_and_real_registered_tool_call(monkeypatch):
+    from backend import ai_coding, providers
+    monkeypatch.setattr(ai_coding, "get_config", lambda: {"configured": True})
+    calls = {"count": 0}
+
+    def provider_reply(messages, definitions):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            assert any(tool["id"] == "modules.list" for tool in definitions)
+            return {"text": "Consultando inventário.", "tool_calls": [{"id": "modules.list", "arguments": {}}]}
+        tool_message = next(message for message in reversed(messages) if message["role"] == "tool")
+        import json
+        result = json.loads(tool_message["content"])
+        assert result["result"]["modules"]
+        return {"text": f"Consultei {len(result['result']['modules'])} módulos reais.", "tool_calls": []}
+
+    monkeypatch.setattr(providers, "chat", provider_reply)
+    with client() as c:
+        created = c.post("/api/v1/ai/conversations", headers=auth(), json={"title": "Teste OFFTEC AI"})
+        conversation_id = created.json()["id"]
+        response = c.post("/api/v1/ai/chat", headers=auth(), json={"conversation_id": conversation_id, "message": "Liste os módulos"})
+        assert response.status_code == 200, response.text
+        task_id = response.json()["task_id"]
+        import time
+        for _ in range(40):
+            state = c.get(f"/api/v1/ai/chat/tasks/{task_id}", headers=auth()).json()
+            if state["status"] != "running": break
+            time.sleep(0.05)
+        assert state["status"] == "completed", state
+        messages = c.get(f"/api/v1/ai/conversations/{conversation_id}", headers=auth()).json()["messages"]
+        assert any(item["role"] == "tool" and '"modules"' in item["content"] for item in messages)
+        assert "módulos reais" in messages[-1]["content"]
+        renamed = c.patch(f"/api/v1/ai/conversations/{conversation_id}", headers=auth(), json={"title": "Inventário local"})
+        assert renamed.json()["title"] == "Inventário local"
+        assert c.get(f"/api/v1/ai/conversations/{conversation_id}", headers=auth()).json()["messages"]
+        assert c.request("DELETE", f"/api/v1/ai/conversations/{conversation_id}", headers=auth(), json={"confirmed": False}).status_code == 409
+        assert c.request("DELETE", f"/api/v1/ai/conversations/{conversation_id}", headers=auth(), json={"confirmed": True}).json()["deleted"] is True
+
+
+def test_offtec_ai_requires_confirmation_for_write_tool(tmp_path, monkeypatch):
+    import pathlib
+    from backend import ai_coding, providers
+    monkeypatch.setattr(ai_coding, "get_config", lambda: {"configured": True})
+    monkeypatch.setattr(pathlib.Path, "home", staticmethod(lambda: tmp_path))
+    monkeypatch.setattr(providers, "chat", lambda messages, definitions: {"text": "", "tool_calls": [{"id": "project.create", "arguments": {"name": "ConfirmedProject"}}]})
+    with client() as c:
+        response = c.post("/api/v1/ai/chat", headers=auth(), json={"message": "Crie um projeto"})
+        assert response.status_code == 200
+        task_id = response.json()["task_id"]
+        import time
+        for _ in range(40):
+            state = c.get(f"/api/v1/ai/chat/tasks/{task_id}", headers=auth()).json()
+            if state["status"] != "running": break
+            time.sleep(0.05)
+        assert state["status"] == "completed", state
+        conversation = c.get(f"/api/v1/ai/conversations/{response.json()['conversation_id']}", headers=auth()).json()
+        pending = next(item for item in conversation["messages"] if item["meta"].get("pending_tools"))
+        assert not (tmp_path / "Projects" / "ConfirmedProject").exists()
+        denied = c.post(f"/api/v1/ai/conversations/{conversation['id']}/confirm-tool", headers=auth(), json={"message_id": pending["id"], "confirmed": False})
+        assert denied.status_code == 409
+        approved = c.post(f"/api/v1/ai/conversations/{conversation['id']}/confirm-tool", headers=auth(), json={"message_id": pending["id"], "confirmed": True})
+        assert approved.status_code == 200
+        assert (tmp_path / "Projects" / "ConfirmedProject").is_dir()
+
+
+def test_offtec_ai_provider_adapter_maps_openai_tool_calls(monkeypatch):
+    import json
+    from backend import providers
+
+    class Reply:
+        def __enter__(self): return self
+        def __exit__(self, *_): return False
+        def read(self, size=-1):
+            return json.dumps({"choices": [{"message": {"content": "", "tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "modules_list", "arguments": "{}"}}]}}]}).encode()
+
+    def fake_open(request, timeout):
+        payload = json.loads(request.data)
+        assert payload["tools"][0]["function"]["name"] == "modules_list"
+        assert request.get_header("Authorization") == "Bearer mock-key"
+        return Reply()
+
+    monkeypatch.setattr(providers, "get_secret", lambda: {"provider": "openai", "model": "mock-model", "api_key": "mock-key", "base_url": "https://example.test/v1"})
+    monkeypatch.setattr(providers.urllib.request, "urlopen", fake_open)
+    result = providers.chat([{"role": "user", "content": "List modules", "meta": {}}], [{"id": "modules.list", "type": "function", "function": {"name": "modules_list", "description": "List", "parameters": {"type": "object", "properties": {}, "additionalProperties": False}}}])
+    assert result["tool_calls"] == [{"id": "modules.list", "arguments": {}}]
+
+
+def test_offtec_ai_generation_can_be_cancelled_cooperatively(monkeypatch):
+    import threading
+    import time
+    from backend import ai_coding, providers
+    monkeypatch.setattr(ai_coding, "get_config", lambda: {"configured": True})
+    started, release = threading.Event(), threading.Event()
+
+    def slow_reply(messages, definitions):
+        started.set()
+        release.wait(4)
+        return {"text": "late response", "tool_calls": []}
+
+    monkeypatch.setattr(providers, "chat", slow_reply)
+    with client() as c:
+        started_response = c.post("/api/v1/ai/chat", headers=auth(), json={"message": "Long task"})
+        task_id = started_response.json()["task_id"]
+        assert started.wait(2)
+        cancel = c.post(f"/api/v1/ai/chat/tasks/{task_id}/cancel", headers=auth())
+        assert cancel.json()["status"] == "cancelling"
+        release.set()
+        for _ in range(40):
+            state = c.get(f"/api/v1/ai/chat/tasks/{task_id}", headers=auth()).json()
+            if state["status"] == "cancelled": break
+            time.sleep(0.05)
+        assert state["status"] == "cancelled"
+        conversation = c.get(f"/api/v1/ai/conversations/{state['conversation_id']}", headers=auth()).json()
+        assert "Geração cancelada" in conversation["messages"][-1]["content"]
 
 
 def test_ai_program_applies_only_relative_files_inside_selected_project(tmp_path, monkeypatch):

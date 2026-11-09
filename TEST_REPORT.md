@@ -46,3 +46,11 @@
 - `py_compile` dos módulos de rebuild, tarefas e rotas: passou.
 - Não foi possível validar JADX/Apktool/compilação de APK real nesta máquina; checkouts externos/credenciais reais indisponíveis.
 - Limite: cancelamento cooperativo não interrompe imediatamente uma chamada HTTP em andamento ao provedor.
+
+## Etapa 5 — OFFTEC AI
+
+- `python -m pytest -q`: **24 passed**, 48 avisos de depreciação.
+- Cobertura: conversas, mensagens persistidas, rename/delete com confirmação, tool call adaptado a OpenAI, execução real de `modules.list` no fluxo de chat, escrita protegida por confirmação e cancelamento cooperativo.
+- `py_compile`: backend alterado passou.
+- Node está instalado, mas falha ao iniciar por símbolo nativo ausente. Esprima disponível no ambiente não entende optional chaining/nullish coalescing já usados pelo frontend; validação sintática JS ainda não disponível.
+- Streaming e dispositivo Android não testados nesta etapa.

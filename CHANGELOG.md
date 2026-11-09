@@ -28,3 +28,10 @@
 - Resultados ReaDroid isolados por upload e fluxo IA de plano, confirmação e workspace separado.
 - Adicionados estado/cancelamento cooperativo e opção de build Gradle offline com consentimento separado.
 - Testes: 19 passaram; compilação Python passou.
+
+## 2026-11-09 — Etapa 5
+
+- Adicionada aba OFFTEC AI com histórico SQLite, seleção/teste de provedores, chat e tool calling real.
+- Ações de escrita aguardam confirmação; geração tem status e cancelamento cooperativo.
+- Removido Sysguard-ASM do inventário visível e mantido System Monitor local.
+- Testes: 24 passaram; Python compilou. Streaming permanece pendente.

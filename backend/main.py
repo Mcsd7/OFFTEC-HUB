@@ -4,6 +4,7 @@ import json
 import logging
 from logging.handlers import RotatingFileHandler
 import os
+import re
 import socket
 import shutil
 import uuid
@@ -16,7 +17,7 @@ from .config import FRONTEND_DIR, LOG_DIR, MAX_UPLOAD_BYTES, TRANSLATION_DIR, UP
 from .core.events import events
 from .core.system import snapshot
 from .database import store
-from .models import AiProviderConfig, AiProviderUpsert, AiProviderTest, AiProgramRequest, ApkRebuildPlan, ApkRebuildApply, ProjectCreate, ProjectTestRequest, ToolExecution, ApkOperation, DnsRequest, PackageInstall, ProjectOperation, TranslationApply, TranslationPreview
+from .models import AiProviderConfig, AiProviderUpsert, AiProviderTest, AiProgramRequest, ApkRebuildPlan, ApkRebuildApply, ConversationCreate, ConversationRename, ConversationDelete, ChatMessageRequest, ToolApproval, ProjectCreate, ProjectTestRequest, ToolExecution, ApkOperation, DnsRequest, PackageInstall, ProjectOperation, TranslationApply, TranslationPreview
 from . import ai_coding
 from . import providers as provider_store
 from . import tool_registry
@@ -395,6 +396,136 @@ async def ai_tool_execute(request: ToolExecution):
     except Exception as exc:
         store.record("ai_tools", request.tool_id, "error", {"error": type(exc).__name__})
         raise HTTPException(422, f"A operação falhou: {type(exc).__name__}.") from None
+
+def _chat_tool_definitions():
+    definitions = []
+    for item in tool_registry.describe_tools():
+        function_name = re.sub(r"[^A-Za-z0-9_]", "_", item["id"])
+        definitions.append({"id": item["id"], "type": "function", "function": {
+            "name": function_name, "description": item["description"], "parameters": item["parameters"]}})
+    return definitions
+
+async def _chat_continue(conversation_id: str, cancel_event=None):
+    definitions = _chat_tool_definitions()
+    for _ in range(4):
+        conversation = store.conversation_get(conversation_id)
+        messages = [{"role": "system", "content": "Você é o OFFTEC AI dentro do OFFTEC HUB. Responda em português quando adequado. Use ferramentas registradas para consultar dados reais. Nunca afirme que executou uma operação sem receber o resultado da ferramenta. Ações que alteram dados aguardam confirmação explícita do usuário."}]
+        messages.extend({"role": row["role"], "content": row["content"], "meta": row["meta"]} for row in conversation["messages"][-40:])
+        response = await run_blocking(provider_store.chat, messages, definitions)
+        if cancel_event is not None and cancel_event.is_set():
+            store.message_add(conversation_id, "assistant", "Geração cancelada. A chamada HTTP já enviada ao provedor pode ter terminado, mas ferramentas e respostas posteriores não foram processadas.")
+            return store.conversation_get(conversation_id)
+        calls = response["tool_calls"]
+        if not calls:
+            store.message_add(conversation_id, "assistant", response["text"] or "O provedor retornou uma resposta vazia.")
+            return store.conversation_get(conversation_id)
+        store.message_add(conversation_id, "assistant", response["text"], {"tool_calls": calls})
+        pending = []
+        for call in calls:
+            if cancel_event is not None and cancel_event.is_set():
+                store.message_add(conversation_id, "assistant", "Geração cancelada antes da próxima operação.")
+                return store.conversation_get(conversation_id)
+            spec = tool_registry.TOOLS.get(call["id"])
+            if spec is None:
+                store.message_add(conversation_id, "tool", json.dumps({"error": "Operação não registrada"}), {"tool_call_id": call["id"]})
+                continue
+            if spec["confirmation_required"]:
+                pending.append({"tool_id": call["id"], "arguments": call["arguments"]})
+                continue
+            try:
+                result = await tool_registry.execute(call["id"], call["arguments"], confirmed=False)
+            except HTTPException as exc:
+                result = {"error": exc.detail, "status": exc.status_code}
+            store.message_add(conversation_id, "tool", json.dumps(result, ensure_ascii=False), {"tool_call_id": call["id"]})
+        if pending:
+            approval_message = store.message_add(conversation_id, "assistant", "A operação abaixo pode criar ou alterar dados. Revise os parâmetros e confirme para executá-la.", {"pending_tools": pending, "confirmation_required": True})
+            conversation = store.conversation_get(conversation_id)
+            conversation["pending_message_id"] = approval_message["id"]
+            return conversation
+    store.message_add(conversation_id, "assistant", "Interrompi após quatro ciclos de ferramentas para limitar a execução. Envie outra mensagem para continuar.")
+    return store.conversation_get(conversation_id)
+
+@app.get("/api/v1/ai/conversations", dependencies=[Depends(authorize)])
+def ai_conversation_list():
+    return {"conversations": store.conversation_list()}
+
+@app.post("/api/v1/ai/conversations", dependencies=[Depends(authorize)])
+def ai_conversation_create(request: ConversationCreate):
+    return store.conversation_create(request.title)
+
+@app.get("/api/v1/ai/conversations/{conversation_id}", dependencies=[Depends(authorize)])
+def ai_conversation_get(conversation_id: str):
+    conversation = store.conversation_get(conversation_id)
+    if not conversation:
+        raise HTTPException(404, "Conversa não encontrada.")
+    return conversation
+
+@app.patch("/api/v1/ai/conversations/{conversation_id}", dependencies=[Depends(authorize)])
+def ai_conversation_rename(conversation_id: str, request: ConversationRename):
+    conversation = store.conversation_rename(conversation_id, request.title)
+    if not conversation:
+        raise HTTPException(404, "Conversa não encontrada.")
+    return conversation
+
+@app.delete("/api/v1/ai/conversations/{conversation_id}", dependencies=[Depends(authorize)])
+def ai_conversation_delete(conversation_id: str, request: ConversationDelete):
+    if not request.confirmed:
+        raise HTTPException(409, "Confirme a exclusão da conversa.")
+    if not store.conversation_delete(conversation_id):
+        raise HTTPException(404, "Conversa não encontrada.")
+    return {"deleted": True}
+
+@app.post("/api/v1/ai/chat", dependencies=[Depends(authorize)])
+async def ai_chat(request: ChatMessageRequest):
+    if not ai_coding.get_config().get("configured"):
+        raise HTTPException(409, "Configure um provedor antes de iniciar uma conversa.")
+    conversation = store.conversation_get(request.conversation_id) if request.conversation_id else None
+    if request.conversation_id and not conversation:
+        raise HTTPException(404, "Conversa não encontrada.")
+    if not conversation:
+        conversation = store.conversation_create()
+    store.message_add(conversation["id"], "user", request.message)
+    from .services import chat_tasks
+    task_id = chat_tasks.start(conversation["id"], request.message)
+    await events.publish({"type": "progress", "task_id": task_id, "message": "Consultando o provedor de IA"})
+    return {"task_id": task_id, "conversation_id": conversation["id"], "status": "running"}
+
+@app.get("/api/v1/ai/chat/tasks/{task_id}", dependencies=[Depends(authorize)])
+def ai_chat_task_status(task_id: str):
+    from .services import chat_tasks
+    result = chat_tasks.get(task_id)
+    if result is None:
+        raise HTTPException(404, "Geração não encontrada.")
+    return result
+
+@app.post("/api/v1/ai/chat/tasks/{task_id}/cancel", dependencies=[Depends(authorize)])
+def ai_chat_task_cancel(task_id: str):
+    from .services import chat_tasks
+    result = chat_tasks.cancel(task_id)
+    if result is None:
+        raise HTTPException(404, "Geração não encontrada.")
+    return result
+
+@app.post("/api/v1/ai/conversations/{conversation_id}/confirm-tool", dependencies=[Depends(authorize)])
+async def ai_conversation_confirm_tool(conversation_id: str, request: ToolApproval):
+    if not request.confirmed:
+        raise HTTPException(409, "Confirmação explícita necessária.")
+    conversation = store.conversation_get(conversation_id)
+    if not conversation:
+        raise HTTPException(404, "Conversa não encontrada.")
+    pending_message = next((message for message in conversation["messages"] if message["id"] == request.message_id and message["role"] == "assistant"), None)
+    if not pending_message or not pending_message["meta"].get("pending_tools"):
+        raise HTTPException(404, "Ação pendente não encontrada.")
+    results = []
+    for item in pending_message["meta"]["pending_tools"]:
+        try:
+            result = await tool_registry.execute(item["tool_id"], item["arguments"], confirmed=True)
+        except HTTPException as exc:
+            result = {"error": exc.detail, "status": exc.status_code}
+        store.message_add(conversation_id, "tool", json.dumps(result, ensure_ascii=False), {"tool_call_id": item["tool_id"]})
+        results.append({"tool_id": item["tool_id"], **result})
+    store.message_add(conversation_id, "assistant", "Operação confirmada e executada no backend. Resultado real:\n" + json.dumps(results, ensure_ascii=False))
+    return store.conversation_get(conversation_id)
 
 @app.put("/api/v1/ai/config", dependencies=[Depends(authorize)])
 def ai_config_save(request: AiProviderConfig):

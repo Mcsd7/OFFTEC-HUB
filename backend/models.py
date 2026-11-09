@@ -63,6 +63,23 @@ class ApkRebuildApply(BaseModel):
     confirmed: bool = False
     allow_build: bool = False
 
+class ConversationCreate(BaseModel):
+    title: str = Field(default="Nova conversa", min_length=1, max_length=100)
+
+class ConversationRename(BaseModel):
+    title: str = Field(min_length=1, max_length=100)
+
+class ChatMessageRequest(BaseModel):
+    conversation_id: str | None = Field(default=None, regex=r"^[a-f0-9]{32}$")
+    message: str = Field(min_length=1, max_length=12000)
+
+class ToolApproval(BaseModel):
+    message_id: str = Field(regex=r"^[a-f0-9]{32}$")
+    confirmed: bool = False
+
+class ConversationDelete(BaseModel):
+    confirmed: bool = False
+
 class AiProgramRequest(BaseModel):
     path: str = Field(min_length=1, max_length=2048)
     prompt: str = Field(min_length=1, max_length=12000)

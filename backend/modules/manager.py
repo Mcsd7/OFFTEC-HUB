@@ -20,7 +20,7 @@ def modules():
         {"id": "ai_center", "name": "Programar com IA", "version": "1.0", "installed": ai_ready, "state": "ready" if ai_ready else "not_configured", "description": "Programação assistida com Gemini, Groq e APIs compatíveis; grava alterações somente no projeto selecionado.", "actions": ["configure", "program", "test"]},
         {"id": "terminal", "name": "Terminal Center", "version": "Termux", "installed": Path("/data/data/com.termux/files/usr").exists(), "state": "ready" if Path("/data/data/com.termux/files/usr").exists() else "unavailable", "description": "Inventário de pacotes; nenhuma execução de shell arbitrária é exposta.", "actions": ["packages"]},
         {"id": "netscope", "name": "Security Lab · NetScope", "version": "1.0", "installed": NETSCOPE_PATH.is_file(), "state": "available_read_only" if NETSCOPE_PATH.is_file() else "unavailable", "description": "NetScope monitora conexões locais; Android pode bloquear /proc/net.", "actions": ["network_status"] if NETSCOPE_PATH.is_file() else []},
-        {"id": "sysguard", "name": "Sysguard-ASM", "version": "source unavailable", "installed": False, "state": "unavailable", "description": "Há somente um binário ARM64 no ambiente de desenvolvimento; integração desabilitada.", "actions": []},
+        {"id": "system_monitor", "name": "System Monitor", "version": "local metrics", "installed": True, "state": "ready", "description": "Métricas do sistema que o usuário Termux consegue acessar, sem root.", "actions": ["snapshot"]},
     ]
 
 

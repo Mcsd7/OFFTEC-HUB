@@ -30,6 +30,11 @@ TOOLS = {
         "parameters": {"type": "object", "properties": {"name": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._ -]{0,79}$"}}, "required": ["name"], "additionalProperties": False},
         "permission": "create_project", "confirmation_required": True,
     },
+    "project.edit": {
+        "name": "Alterar arquivos de projeto", "description": "Solicita alterações via provedor em arquivos do projeto selecionado; grava somente após confirmação.",
+        "parameters": {"type": "object", "properties": {"path": {"type": "string", "maxLength": 2048}, "request": {"type": "string", "maxLength": 8000}}, "required": ["path", "request"], "additionalProperties": False},
+        "permission": "write_project", "confirmation_required": True,
+    },
 }
 
 
@@ -84,6 +89,13 @@ async def execute(tool_id, args, confirmed=False):
         from .main import create_project
         from .models import ProjectCreate
         result = await run_blocking(create_project, ProjectCreate(name=args["name"]))
+    elif tool_id == "project.edit":
+        from .main import _project_path
+        from . import ai_coding
+        if not ai_coding.get_config().get("configured"):
+            raise HTTPException(409, "Configure um provedor de IA antes de alterar arquivos.")
+        path = _project_path(args["path"])
+        result = await run_blocking(ai_coding.build_project, path, args["request"])
     else:
         raise HTTPException(404, "Operação não registrada.")
     return {"tool_id": tool_id, "permission": spec["permission"], "result": result}

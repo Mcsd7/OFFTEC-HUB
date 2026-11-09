@@ -2,7 +2,7 @@
 
 ## Estado atual
 
-- Etapa atual: **5 — Nova aba OFFTEC AI**.
+- Etapa atual: **6 — Integração do Codex CLI**.
 - Etapa 1: concluída no checkpoint `39e2619`. Etapa 2: concluída e confirmada no commit imediatamente anterior ao início da Etapa 3.
 - Não iniciar a etapa 2 até o checkpoint da etapa 1 estar confirmado.
 
@@ -79,3 +79,13 @@
 - Fontes originais não são declaradas como recuperadas. Análises estáticas/DEX e bibliotecas nativas podem deixar workspace incompleto; build não é garantido.
 - 19 testes passaram, incluindo fluxo com provedor mock, confirmação, cópia isolada e hash do APK original preservado.
 - Próxima atividade: chat/histórico persistente e tool calling na aba OFFTEC AI.
+
+### Etapa 5 — concluída com limites declarados
+
+- Nova aba OFFTEC AI com criação/renomeação/exclusão confirmada de conversas e histórico persistido em SQLite.
+- Gemini e APIs compatíveis usam tool calling nativo; ferramentas registradas de leitura executam no backend e seus resultados reais retornam à conversa. Escrita em projeto/criação de projeto pede confirmação e parâmetros ficam visíveis.
+- Seleção de provedor/modelo configurado, teste de conexão, erros, progresso e cancelamento cooperativo. Respostas renderizam blocos de código com cópia.
+- Sysguard-ASM removido da lista de módulos da UI; System Monitor continua exibindo métricas reais.
+- Testes: 24 passaram, incluindo tool call real via registro com provedor mock, confirmação de escrita, persistência e cancelamento cooperativo.
+- Limitações: streaming não implementado; cancelamento espera a chamada HTTP já enviada retornar antes de descartar resposta/evitar operações posteriores. Arquivos gerados por ferramenta são gravados no workspace de projeto e apresentados como resultado, sem gerenciador de anexos dedicado.
+- Próxima atividade: detectar e encaminhar tarefas ao Codex CLI usando apenas sintaxe verificada localmente.

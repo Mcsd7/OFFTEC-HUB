@@ -204,3 +204,77 @@ def test_draft(provider, model, api_key, base_url=""):
     if not item["api_key"]:
         raise ValueError("Informe a chave da API para testar.")
     return _model_list(item)
+
+
+def chat(messages, definitions):
+    """One real provider chat completion; tool execution stays in the backend registry."""
+    item = get_secret()
+    provider = item["provider"]
+    base = item["base_url"].rstrip("/")
+    name_to_id = {definition["function"]["name"]: definition["id"] for definition in definitions}
+    if provider == "gemini":
+        contents = []
+        for message in messages:
+            role = message["role"]
+            if role == "system":
+                continue
+            if role == "tool":
+                call_id = message.get("meta", {}).get("tool_call_id")
+                function_name = next((name for name, identifier in name_to_id.items() if identifier == call_id), "unknown")
+                contents.append({"role": "user", "parts": [{"functionResponse": {"name": function_name, "response": {"result": message["content"]}}}]})
+                continue
+            meta = message.get("meta", {})
+            if role == "assistant" and meta.get("tool_calls"):
+                parts = [{"functionCall": {"name": next((name for name, identifier in name_to_id.items() if identifier == call["id"]), call["id"]), "args": call["arguments"]}} for call in meta["tool_calls"]]
+                if message.get("content"):
+                    parts.insert(0, {"text": message["content"]})
+                contents.append({"role": "model", "parts": parts})
+            else:
+                contents.append({"role": "model" if role == "assistant" else "user", "parts": [{"text": message["content"]}]})
+        tools = [{"functionDeclarations": [{"name": x["function"]["name"], "description": x["function"]["description"], "parameters": x["function"]["parameters"]} for x in definitions]}] if definitions else []
+        body = {"contents": contents, "tools": tools}
+        system = next((m["content"] for m in messages if m["role"] == "system"), "")
+        if system:
+            body["systemInstruction"] = {"parts": [{"text": system}]}
+        url = f"{base}/models/{item['model']}:generateContent?key={urllib.parse.quote(item['api_key'], safe='')}"
+        headers = {"Content-Type": "application/json"}
+    else:
+        url = f"{base}/chat/completions"
+        body = {"model": item["model"], "messages": [{"role": m["role"], "content": m["content"], **({"tool_calls": [{"id": call["id"], "type": "function", "function": {"name": next((name for name, identifier in name_to_id.items() if identifier == call["id"]), call["id"]), "arguments": json.dumps(call["arguments"], ensure_ascii=False)}} for call in m["meta"]["tool_calls"]]} if m.get("meta", {}).get("tool_calls") else {}), **({"tool_call_id": m["meta"]["tool_call_id"]} if m.get("role") == "tool" else {})} for m in messages], "temperature": 0.2}
+        if definitions:
+            body["tools"] = definitions
+            body["tool_choice"] = "auto"
+        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {item['api_key']}"}
+    request = urllib.request.Request(url, data=json.dumps(body).encode(), headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=180) as response:
+            data = json.loads(response.read(2_000_001).decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        if exc.code in {401, 403}:
+            raise RuntimeError("Autenticação rejeitada pelo provedor (401/403).") from None
+        if exc.code == 404:
+            raise RuntimeError("Modelo ou endpoint não encontrado (404).") from None
+        raise RuntimeError(f"Provedor de IA retornou HTTP {exc.code}.") from None
+    except (OSError, ValueError, UnicodeError) as exc:
+        raise RuntimeError(f"Falha na chamada ao provedor: {type(exc).__name__}.") from None
+    if provider == "gemini":
+        parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+        text = "\n".join(part["text"] for part in parts if isinstance(part, dict) and isinstance(part.get("text"), str))
+        calls = [{"id": name_to_id.get(part["functionCall"].get("name"), ""), "arguments": part["functionCall"].get("args", {})} for part in parts if isinstance(part, dict) and isinstance(part.get("functionCall"), dict)]
+        if any(not call["id"] for call in calls):
+            raise RuntimeError("O provedor solicitou uma ferramenta não registrada.")
+    else:
+        message = data["choices"][0]["message"]
+        text = message.get("content") or ""
+        calls = []
+        for call in message.get("tool_calls", []):
+            function = call.get("function", {})
+            identifier = name_to_id.get(function.get("name"), "")
+            if not identifier:
+                raise RuntimeError("O provedor solicitou uma ferramenta não registrada.")
+            try:
+                arguments = json.loads(function.get("arguments", "{}"))
+            except ValueError:
+                raise RuntimeError("O provedor retornou parâmetros de ferramenta inválidos.") from None
+            calls.append({"id": identifier, "arguments": arguments})
+    return {"text": text, "tool_calls": calls}

@@ -6,6 +6,7 @@ Aplicativo Android com WebView e um backend FastAPI local no Termux. A API escut
 
 - Dashboard com métricas do sistema, status real do Termux/backend, inventário de módulos e histórico SQLite.
 - APK Lab ligado ao analisador estático do ReaDroid: upload por seletor Android, inspeção ZIP/DEX/SHA-256, Manifest/permissões, JADX/Apktool, visualização de arquivos gerados e exportação JSON.
+- Aba OFFTEC AI com conversas persistentes, seleção de provedor/modelo, cancelamento cooperativo e tool calling para operações registradas; alterações de projeto exigem confirmação. PROGRAMAR COM IA permanece como fluxo dedicado.
 - Dev Studio ligado às funções reais do OffTec PortAI: análise de projeto e motor de tradução. Propostas só são gravadas depois da seleção do usuário e em diretório fora do original. O provedor padrão do PortAI é `offline-review`; traduções só aparecem com um provedor real configurado.
 - Security Lab chama o NetScope local para leitura de conexões/bytes quando disponível e faz consulta DNS pelo resolvedor do dispositivo.
 - Terminal Center consulta pacotes e instala apenas nomes de uma lista fixa, depois de confirmação na interface. A API não recebe comandos shell.
@@ -16,7 +17,7 @@ Aplicativo Android com WebView e um backend FastAPI local no Termux. A API escut
 
 ReaDroid e PortAI são adaptadores que reutilizam checkouts já existentes, configuráveis por `OFFTEC_READROID_PATH` e `OFFTEC_PORTAI_PATH` (padrão `~/ReaDroid` e `~/OffTec-PortAI`). NetScope é encontrado em `~/ferramentas/Netscop/netscope.py`. Em outro dispositivo, instale/configure cada projeto separadamente. Não há cópia automática de código ou clone silencioso.
 
-Sysguard-ASM está desabilitado: no ambiente inspecionado há somente um executável ARM64, sem fonte/interface disponível para uma integração distribuível. AI Center é apresentado como não configurado: nenhum provedor de IA é chamado nesta versão. PortAI não promete conversão universal de projetos ou APKs.
+Sysguard-ASM não aparece mais na navegação; System Monitor usa métricas locais disponíveis. A aba OFFTEC AI usa provedores configurados no backend, sem streaming nesta versão. Chamadas de ferramentas de leitura executam operações registradas; alterações aguardam confirmação. PortAI/ReaDroid não prometem recuperar código-fonte original de APKs.
 
 Sem root, Android pode bloquear `/proc/net`, ocultar processos e não expor sensores térmicos. O painel mostra ausência de acesso, sem inventar números. JADX e Apktool são opcionais e precisam ser instalados no Termux.
 
