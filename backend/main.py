@@ -175,7 +175,6 @@ async def apk_operation(request: ApkOperation):
     apk = UPLOAD_DIR / f"{request.upload_id}.apk"
     if not apk.is_file():
         raise HTTPException(404, "APK enviado não encontrado")
-    analyzer = load_readroid()
     output_root = UPLOAD_DIR / "output" / request.upload_id
     report_root = UPLOAD_DIR / "reports" / request.upload_id
     output_root.mkdir(parents=True, exist_ok=True)
@@ -183,6 +182,7 @@ async def apk_operation(request: ApkOperation):
     task_id = uuid.uuid4().hex[:12]
     await events.publish({"type": "progress", "task_id": task_id, "message": "Validando e analisando o arquivo"})
     try:
+        analyzer = load_readroid()
         if request.action == "inspect":
             result = await run_blocking(analyzer.inspect_apk, apk)
         elif request.action == "manifest":
@@ -276,13 +276,11 @@ def apk_result_file(file_id: str):
 
 @app.post("/api/v1/dev/analyze", dependencies=[Depends(authorize)])
 async def analyze_project(request: ProjectOperation):
-    path = Path(request.path).expanduser().resolve()
-    if not path.is_dir() or path == Path("/"):
-        raise HTTPException(400, "Selecione uma pasta de projeto válida")
-    portai = load_portai()
+    path = _project_path(request.path)
     task_id = uuid.uuid4().hex[:12]
     await events.publish({"type": "progress", "task_id": task_id, "message": "Analisando estrutura e evidências"})
     try:
+        portai = load_portai()
         result = await run_blocking(portai.analyze_project, path)
         op_id = store.record("dev_studio", request.action, "success", result)
         await events.publish({"type": "progress", "task_id": task_id, "message": "Análise concluída"})
@@ -300,6 +298,20 @@ def _project_path(raw: str) -> Path:
     if not path.is_dir() or path == Path("/") or not (home in path.parents or temp_root == path or temp_root in path.parents):
         raise HTTPException(400, "Projeto inválido. Selecione uma pasta dentro do HOME do Termux.")
     return path
+
+def _safe_output_path(raw: str, source: Path) -> Path:
+    import tempfile
+    requested = Path(raw).expanduser()
+    output = requested.resolve()
+    home = Path.home().resolve()
+    temp_root = Path(tempfile.gettempdir()).resolve()
+    allowed = home in output.parents or temp_root == output or temp_root in output.parents
+    if not allowed or output == Path("/") or not requested.name:
+        raise HTTPException(400, "A pasta de saída precisa ficar dentro do HOME do Termux ou da pasta temporária.")
+    source = source.resolve()
+    if output == source or output in source.parents or source in output.parents:
+        raise HTTPException(400, "A saída precisa ficar separada do projeto original.")
+    return output
 
 @app.get("/api/v1/dev/projects", dependencies=[Depends(authorize)])
 def dev_projects():
@@ -641,9 +653,7 @@ def _translation_types():
 
 @app.post("/api/v1/dev/translation/preview", dependencies=[Depends(authorize)])
 async def translation_preview(request: TranslationPreview):
-    root = Path(request.path).expanduser().resolve()
-    if not root.is_dir() or root == Path("/"):
-        raise HTTPException(400, "Selecione uma pasta de projeto válida")
+    root = _project_path(request.path)
     session_id = uuid.uuid4().hex
     try:
         Engine, Entry, Result, provider_factory = _translation_types()
@@ -680,10 +690,8 @@ async def translation_apply(request: TranslationApply):
             raise ValueError("A seleção contém entradas que não pertencem à sessão.")
         decisions = {(entry.entry_id, language): entry.entry_id in selected for entry in entries for language in request.targets}
         Engine.approve(result, decisions, request.targets)
-        project = Path(result.project)
-        output = Path(request.output_dir).expanduser().resolve()
-        if output == project or project in output.parents:
-            raise ValueError("A pasta de localização precisa ficar fora do projeto original.")
+        project = _project_path(str(result.project))
+        output = _safe_output_path(request.output_dir, project)
         output.mkdir(parents=True, exist_ok=True)
         translator = Engine(None)
         report = await run_blocking(translator.apply, result, project, output, request.targets)

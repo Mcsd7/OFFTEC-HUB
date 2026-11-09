@@ -62,3 +62,10 @@
 - Testes mockados cobrem descoberta de flags/versão, cópia isolada e exclusão de `.env`/chaves; tarefa mock confirma argv fixo sem `--yolo` ou `--full-auto`.
 - Teste real: bloqueado. Executável detectado, mas `codex --version` e `codex --help` falham porque Node não carrega símbolo C++ nativo. Autenticação só pode ser confirmada executando uma tarefa real; permanece sem validação.
 - Sintaxe baseada em OpenAI Docs: `codex exec --json --sandbox workspace-write <prompt>`; implementação ainda exige que a ajuda da instalação confirme esses parâmetros antes de habilitar execução.
+
+## Etapa 7 — integração dos módulos
+
+- `python -m pytest -q`: **29 passed**, 51 avisos de depreciação.
+- `python -m py_compile backend/*.py backend/core/*.py backend/database/*.py backend/modules/*.py backend/services/*.py`: passou.
+- Testes incluem DNS real `localhost`, allowlist/schema de operações e rejeição de diretórios e saídas inseguras.
+- ReaDroid, PortAI e NetScope dependem de checkouts externos ausentes neste ambiente e permanecem sem validação funcional real.

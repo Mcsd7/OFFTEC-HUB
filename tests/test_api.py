@@ -241,10 +241,27 @@ def test_ai_tool_registry_executes_real_read_operations_and_rejects_unknown_para
         assert result.json()["result"]["cpu_cores"] > 0
         modules = c.post("/api/v1/ai/tools/execute", headers=auth(), json={"tool_id": "modules.list", "arguments": {}})
         assert modules.status_code == 200 and modules.json()["result"]["modules"]
+        dns = c.post("/api/v1/ai/tools/execute", headers=auth(), json={"tool_id": "security.dns_lookup", "arguments": {"hostname": "localhost"}})
+        assert dns.status_code == 200 and dns.json()["result"]["addresses"]
         extra = c.post("/api/v1/ai/tools/execute", headers=auth(), json={"tool_id": "system.snapshot", "arguments": {"shell": "id"}})
         assert extra.status_code == 422
         unknown = c.post("/api/v1/ai/tools/execute", headers=auth(), json={"tool_id": "shell.run", "arguments": {"cmd": "id"}})
         assert unknown.status_code == 404
+
+
+def test_project_analysis_and_translation_reject_outside_paths_and_output_overlap():
+    from backend.main import _safe_output_path
+    from fastapi import HTTPException
+    project = Path.home() / "HUB"
+    with client() as c:
+        response = c.post("/api/v1/dev/analyze", headers=auth(), json={"path": "/etc", "action": "analyze_project"})
+        assert response.status_code == 400
+        translation = c.post("/api/v1/dev/translation/preview", headers=auth(), json={"path": "/etc/passwd", "targets": ["pt-BR"]})
+        assert translation.status_code == 400
+    with pytest.raises(HTTPException):
+        _safe_output_path(str(project / "localized"), project)
+    with pytest.raises(HTTPException):
+        _safe_output_path("/etc/offtec-output", project)
 
 
 def test_ai_tool_confirmation_and_project_analysis(tmp_path, monkeypatch):

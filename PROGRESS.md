@@ -2,7 +2,7 @@
 
 ## Estado atual
 
-- Etapa atual: **7 — Integração de todas as ferramentas**.
+- Etapa atual: **8 — Interface e experiência do usuário**.
 - Etapa 1: concluída no checkpoint `39e2619`. Etapa 2: concluída e confirmada no commit imediatamente anterior ao início da Etapa 3.
 - Não iniciar a etapa 2 até o checkpoint da etapa 1 estar confirmado.
 
@@ -100,3 +100,15 @@
 - Testes: 28 passaram, incluindo detecção de features com help mockado, execução mockada em cópia, ausência de flags de bypass e exclusão de arquivos secretos.
 - Bloqueio para validação real: `codex` está instalado, mas o wrapper Node falha ao iniciar (`_ZNSt6__ndk113__hash_memoryEPKvm`); versão, ajuda, autenticação e execução real não puderam ser confirmadas. O app reporta indisponível até runtime funcional. O botão de smoke test executará o teste real quando corrigido.
 - Próxima atividade: auditoria funcional dos módulos e ligação contextual com as operações reais disponíveis.
+
+### Etapa 7 — auditoria/correções principais concluídas
+
+- ReaDroid: análise, resultados isolados por upload, Manifest/JADX/Apktool, inspeção, resultados e reconstrução assistida.
+- PortAI: análise validada dentro de HOME/temporário; tradução revisável e destino externo permitido só em áreas autorizadas.
+- NetScope e DNS: funções existentes e ferramentas de consulta contextual registradas; indisponibilidade externa é reportada sem fingir execução.
+- APK Lab: todos os quatro modos apontam para o endpoint de operação; erros de carregamento do adaptador ReaDroid agora são tratados.
+- Programar com IA: edição de projeto via ferramenta exige confirmação; testes reconhecidos estão disponíveis como operação confirmada na camada de ferramentas.
+- System Monitor, terminal/pacotes, Security Lab e OFFTEC AI permanecem conectados a operações/rotas concretas; Sysguard removido da lista visível.
+- Foram bloqueados paths fora do HOME/temporário na análise PortAI/tradução e destinos de tradução que cruzam ou substituem a origem.
+- Testes: 29 passaram; `py_compile` em todos os módulos passou. Checkouts ReaDroid/PortAI/NetScope reais não estão instalados neste ambiente, então não houve execução de suas ferramentas externas reais.
+- Próxima atividade: concluir estados visuais, responsividade, feedback de tarefas e cancelamento do Codex.

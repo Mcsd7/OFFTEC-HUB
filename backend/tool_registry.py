@@ -25,6 +25,26 @@ TOOLS = {
         "parameters": {"type": "object", "properties": {"upload_id": {"type": "string", "pattern": "^[a-f0-9]{32}$"}}, "required": ["upload_id"], "additionalProperties": False},
         "permission": "read_uploaded_apk", "confirmation_required": False,
     },
+    "apk.analyze_manifest": {
+        "name": "Analisar Manifest", "description": "Executa análise ReaDroid de Manifest no APK enviado.",
+        "parameters": {"type": "object", "properties": {"upload_id": {"type": "string", "pattern": "^[a-f0-9]{32}$"}}, "required": ["upload_id"], "additionalProperties": False},
+        "permission": "analyze_uploaded_apk", "confirmation_required": True,
+    },
+    "security.dns_lookup": {
+        "name": "Consultar DNS", "description": "Consulta o resolvedor DNS do dispositivo para um nome de host.",
+        "parameters": {"type": "object", "properties": {"hostname": {"type": "string", "maxLength": 253, "pattern": "[A-Za-z0-9.-]+"}}, "required": ["hostname"], "additionalProperties": False},
+        "permission": "network_dns_read", "confirmation_required": False,
+    },
+    "security.network_status": {
+        "name": "Ler estado de rede", "description": "Consulta NetScope local quando instalado; pode ser limitado pelo Android.",
+        "parameters": {"type": "object", "properties": {}, "required": [], "additionalProperties": False},
+        "permission": "local_network_read", "confirmation_required": False,
+    },
+    "project.test": {
+        "name": "Testar projeto", "description": "Executa testes reconhecidos dentro do projeto selecionado.",
+        "parameters": {"type": "object", "properties": {"path": {"type": "string", "maxLength": 2048}}, "required": ["path"], "additionalProperties": False},
+        "permission": "execute_project_tests", "confirmation_required": True,
+    },
     "project.create": {
         "name": "Criar projeto vazio", "description": "Cria uma nova pasta vazia em ~/Projects.",
         "parameters": {"type": "object", "properties": {"name": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._ -]{0,79}$"}}, "required": ["name"], "additionalProperties": False},
@@ -85,6 +105,33 @@ async def execute(tool_id, args, confirmed=False):
         if not apk.is_file():
             raise HTTPException(404, "APK enviado não encontrado.")
         result = await run_blocking(load_readroid().inspect_apk, apk)
+    elif tool_id == "apk.analyze_manifest":
+        from .config import UPLOAD_DIR
+        from .modules.manager import load_readroid
+        apk = UPLOAD_DIR / f"{args['upload_id']}.apk"
+        if not apk.is_file():
+            raise HTTPException(404, "APK enviado não encontrado.")
+        report = UPLOAD_DIR / "reports" / args["upload_id"]
+        report.mkdir(parents=True, exist_ok=True)
+        result = await run_blocking(load_readroid().analyze_manifest, apk, report)
+    elif tool_id == "security.dns_lookup":
+        import socket
+        hostname = args["hostname"].rstrip(".")
+        if not hostname or ".." in hostname:
+            raise HTTPException(422, "Nome de host inválido.")
+        records = await run_blocking(socket.getaddrinfo, hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+        result = {"hostname": hostname, "addresses": sorted({item[4][0] for item in records})}
+    elif tool_id == "security.network_status":
+        from .modules.manager import load_netscope
+        adapter = load_netscope()
+        connections, denied = await run_blocking(adapter.read_connections)
+        counters = await run_blocking(adapter.net_bytes)
+        result = {"available": True, "connections": connections[:100], "access_restricted": denied,
+                  "interface_bytes": {"received": counters[0], "transmitted": counters[1]} if counters else None}
+    elif tool_id == "project.test":
+        from .main import ai_test
+        from .models import ProjectTestRequest
+        result = await ai_test(ProjectTestRequest(path=args["path"]))
     elif tool_id == "project.create":
         from .main import create_project
         from .models import ProjectCreate

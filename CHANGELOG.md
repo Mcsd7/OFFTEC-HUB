@@ -41,3 +41,9 @@
 - Criada integração Codex CLI com detecção por versão/ajuda, cópia de projeto isolada, comando fixo JSONL e registro de resultados.
 - Confirmação antes da execução; exclusão de arquivos comuns de segredo e de caches/builds; nenhum modo de aprovação automática.
 - 28 testes passaram. O runtime Codex local não inicia por falha de símbolo nativo Node; teste real permanece indisponível.
+
+## 2026-11-09 — Etapa 7
+
+- Auditoria de endpoints e controles; paths de análise/tradução agora são limitados e saídas não podem atingir a origem.
+- Ferramentas contextuais incluem DNS, NetScope, Manifest e testes de projeto com confirmação.
+- Falhas de adaptador ReaDroid são tratadas. 29 testes passaram.
