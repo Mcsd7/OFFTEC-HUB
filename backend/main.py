@@ -16,8 +16,9 @@ from .config import FRONTEND_DIR, LOG_DIR, MAX_UPLOAD_BYTES, TRANSLATION_DIR, UP
 from .core.events import events
 from .core.system import snapshot
 from .database import store
-from .models import AiProviderConfig, AiProgramRequest, ProjectCreate, ProjectTestRequest, ApkOperation, DnsRequest, PackageInstall, ProjectOperation, TranslationApply, TranslationPreview
+from .models import AiProviderConfig, AiProviderUpsert, AiProviderTest, AiProgramRequest, ProjectCreate, ProjectTestRequest, ApkOperation, DnsRequest, PackageInstall, ProjectOperation, TranslationApply, TranslationPreview
 from . import ai_coding
+from . import providers as provider_store
 from .modules.manager import modules, load_netscope, load_readroid, load_portai
 from .security import session_token
 from .services.tasks import run_blocking
@@ -286,6 +287,55 @@ def create_project(request: ProjectCreate):
 @app.get("/api/v1/ai/config", dependencies=[Depends(authorize)])
 def ai_config_status():
     return ai_coding.get_config()
+
+@app.get("/api/v1/ai/providers", dependencies=[Depends(authorize)])
+def ai_providers_list():
+    return {"providers": provider_store.all_providers(), "default_id": provider_store.status().get("default_id")}
+
+@app.post("/api/v1/ai/providers", dependencies=[Depends(authorize)])
+def ai_provider_create(request: AiProviderUpsert):
+    try:
+        return provider_store.save(request.name, request.provider, request.model, request.api_key, request.base_url)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+@app.put("/api/v1/ai/providers/{provider_id}", dependencies=[Depends(authorize)])
+def ai_provider_update(provider_id: str, request: AiProviderUpsert):
+    try:
+        return provider_store.save(request.name, request.provider, request.model, request.api_key, request.base_url, provider_id)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+@app.delete("/api/v1/ai/providers/{provider_id}", dependencies=[Depends(authorize)])
+def ai_provider_delete(provider_id: str):
+    try:
+        return provider_store.remove(provider_id)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc))
+
+@app.put("/api/v1/ai/default/{provider_id}", dependencies=[Depends(authorize)])
+def ai_provider_default(provider_id: str):
+    try:
+        return provider_store.select(provider_id)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc))
+
+@app.post("/api/v1/ai/providers/test", dependencies=[Depends(authorize)])
+async def ai_provider_test(request: AiProviderTest):
+    try:
+        if request.provider_id:
+            return await run_blocking(provider_store.test_saved, request.provider_id)
+        if not request.provider or not request.model or not request.api_key:
+            raise ValueError("Informe provedor, modelo e chave para testar.")
+        return await run_blocking(provider_store.test_draft, request.provider, request.model, request.api_key, request.base_url)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except RuntimeError as exc:
+        return {"connected": False, "message": str(exc)}
 
 @app.put("/api/v1/ai/config", dependencies=[Depends(authorize)])
 def ai_config_save(request: AiProviderConfig):

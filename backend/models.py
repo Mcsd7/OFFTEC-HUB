@@ -34,6 +34,20 @@ class AiProviderConfig(BaseModel):
     api_key: str = Field(min_length=1, max_length=512)
     base_url: str = Field(default="", max_length=500)
 
+class AiProviderUpsert(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    provider: str = Field(regex="^(gemini|groq|openai|compatible)$")
+    model: str = Field(min_length=1, max_length=160)
+    api_key: str = Field(default="", max_length=512)
+    base_url: str = Field(default="", max_length=500)
+
+class AiProviderTest(BaseModel):
+    provider_id: str | None = Field(default=None, regex=r"^[a-f0-9]{32}$")
+    provider: str | None = Field(default=None, regex="^(gemini|groq|openai|compatible)$")
+    model: str | None = Field(default=None, max_length=160)
+    api_key: str | None = Field(default=None, max_length=512)
+    base_url: str = Field(default="", max_length=500)
+
 class AiProgramRequest(BaseModel):
     path: str = Field(min_length=1, max_length=2048)
     prompt: str = Field(min_length=1, max_length=12000)

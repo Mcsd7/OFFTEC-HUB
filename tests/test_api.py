@@ -140,7 +140,9 @@ def test_websocket_requires_session_token():
 
 def test_ai_provider_config_keeps_secret_private_and_supports_multiple_providers(tmp_path, monkeypatch):
     from backend import ai_coding
+    from backend import providers
     monkeypatch.setattr(ai_coding, "AI_CONFIG_PATH", tmp_path / "providers.json")
+    monkeypatch.setattr(providers, "AI_CONFIG_PATH", tmp_path / "providers.json")
     with client() as c:
         first = c.put("/api/v1/ai/config", headers=auth(), json={"provider": "groq", "model": "model-a", "api_key": "secret-a"})
         assert first.status_code == 200
@@ -152,6 +154,78 @@ def test_ai_provider_config_keeps_secret_private_and_supports_multiple_providers
         selected = c.put("/api/v1/ai/active/0", headers=auth())
         assert selected.json()["provider"] == "groq"
     assert (tmp_path / "providers.json").stat().st_mode & 0o077 == 0
+
+
+def test_ai_provider_crud_preserves_key_and_selects_default(tmp_path, monkeypatch):
+    from backend import providers
+    monkeypatch.setattr(providers, "AI_CONFIG_PATH", tmp_path / "providers.json")
+    with client() as c:
+        created = c.post("/api/v1/ai/providers", headers=auth(), json={
+            "name": "Gateway local", "provider": "compatible", "model": "chat-v2",
+            "api_key": "private-test-key", "base_url": "http://localhost:8080/v1"})
+        assert created.status_code == 200, created.text
+        pid = created.json()["providers"][0]["id"]
+        assert "private-test-key" not in created.text
+        edited = c.put(f"/api/v1/ai/providers/{pid}", headers=auth(), json={
+            "name": "Gateway renamed", "provider": "compatible", "model": "chat-v3",
+            "api_key": "", "base_url": "http://localhost:8080/v1"})
+        assert edited.status_code == 200, edited.text
+        assert edited.json()["providers"][0]["name"] == "Gateway renamed"
+        assert providers.get_secret(pid)["api_key"] == "private-test-key"
+        assert c.put(f"/api/v1/ai/default/{pid}", headers=auth()).json()["default_id"] == pid
+        assert c.delete(f"/api/v1/ai/providers/{pid}", headers=auth()).json()["configured"] is False
+    assert (tmp_path / "providers.json").stat().st_mode & 0o077 == 0
+
+
+def test_ai_provider_connection_checks_live_model_catalog_without_leaking_key(tmp_path, monkeypatch):
+    import json
+    from backend import providers
+    monkeypatch.setattr(providers, "AI_CONFIG_PATH", tmp_path / "providers.json")
+
+    class Reply:
+        def __enter__(self): return self
+        def __exit__(self, *_): return False
+        def read(self, size=-1): return json.dumps({"data": [{"id": "model-real"}]}).encode()
+
+    def fake_open(request, timeout):
+        assert request.get_method() == "GET"
+        assert request.full_url.endswith("/models")
+        assert request.get_header("Authorization") == "Bearer connection-secret"
+        return Reply()
+
+    monkeypatch.setattr(providers.urllib.request, "urlopen", fake_open)
+    with client() as c:
+        response = c.post("/api/v1/ai/providers/test", headers=auth(), json={
+            "provider": "openai", "model": "model-real", "api_key": "connection-secret"})
+        assert response.status_code == 200
+        assert response.json()["connected"] is True
+        assert "connection-secret" not in response.text
+        missing = c.post("/api/v1/ai/providers/test", headers=auth(), json={
+            "provider": "openai", "model": "missing-model", "api_key": "connection-secret"})
+        assert missing.json()["connected"] is False
+        assert "não foi encontrado" in missing.json()["message"]
+
+
+def test_ai_provider_rejects_unsafe_urls_and_sanitizes_auth_errors(tmp_path, monkeypatch):
+    import urllib.error
+    from backend import providers
+    monkeypatch.setattr(providers, "AI_CONFIG_PATH", tmp_path / "providers.json")
+    with client() as c:
+        invalid = c.post("/api/v1/ai/providers", headers=auth(), json={
+            "name": "Unsafe", "provider": "compatible", "model": "m1", "api_key": "secret",
+            "base_url": "http://example.com/v1"})
+        assert invalid.status_code == 400
+
+    def unauthorized(request, timeout):
+        raise urllib.error.HTTPError(request.full_url, 401, "unauthorized", {}, None)
+
+    monkeypatch.setattr(providers.urllib.request, "urlopen", unauthorized)
+    with client() as c:
+        denied = c.post("/api/v1/ai/providers/test", headers=auth(), json={
+            "provider": "openai", "model": "m1", "api_key": "must-not-leak"})
+        assert denied.json()["connected"] is False
+        assert "401/403" in denied.json()["message"]
+        assert "must-not-leak" not in denied.text
 
 
 def test_ai_program_applies_only_relative_files_inside_selected_project(tmp_path, monkeypatch):

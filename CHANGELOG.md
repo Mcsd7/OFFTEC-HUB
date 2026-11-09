@@ -8,3 +8,11 @@
 - Build Android debug confirmado com o override AAPT2 local.
 - Nenhuma alteração funcional nesta etapa.
 - Checkpoint Git da etapa 1 criado em `main`.
+
+## 2026-11-09 — Etapa 2
+
+- Adicionado CRUD seguro e persistente para provedores, seleção padrão e migração do formato anterior.
+- Adicionado teste real de catálogo/modelo para confirmar autenticação e existência do modelo.
+- API nunca retorna API Key; erros de autenticação/modelo são claros e não incluem corpos de resposta do provedor.
+- Frontend permite adicionar, editar, testar, selecionar padrão e remover.
+- Testes: 16 passaram; `node --check` e `py_compile` passaram. Sem credenciais presentes para teste real externo.

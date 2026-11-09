@@ -7,6 +7,7 @@ import urllib.request
 from pathlib import Path
 
 from .config import AI_CONFIG_PATH
+from . import providers as provider_store
 
 PROVIDERS = {
     "gemini": {"base_url": "https://generativelanguage.googleapis.com/v1beta", "style": "gemini"},
@@ -17,76 +18,25 @@ PROVIDERS = {
 
 
 def get_config():
-    if not AI_CONFIG_PATH.is_file():
-        return {"configured": False}
     try:
-        raw = json.loads(AI_CONFIG_PATH.read_text(encoding="utf-8"))
-        configs = raw.get("providers") if isinstance(raw, dict) else None
-        if configs:
-            active = max(0, min(int(raw.get("active", 0)), len(configs) - 1))
-            item = configs[active]
-            return {"configured": True, "provider": item["provider"], "model": item["model"],
-                    "base_url": item.get("base_url", ""), "key_set": bool(item.get("api_key")), "provider_count": len(configs),
-                    "providers": [{"provider": entry["provider"], "model": entry["model"]} for entry in configs], "active": active}
-        return {"configured": True, "provider": raw["provider"], "model": raw["model"],
-                "base_url": raw.get("base_url", ""), "key_set": bool(raw.get("api_key")), "provider_count": 1,
-                "providers": [{"provider": raw["provider"], "model": raw["model"]}], "active": 0}
-    except (OSError, ValueError, KeyError):
-        return {"configured": False}
+        return provider_store.status()
+    except (OSError, ValueError, KeyError, TypeError):
+        return {"configured": False, "providers": [], "provider_count": 0, "default_id": None}
 
 
 def save_config(provider, model, api_key, base_url=""):
-    if provider not in PROVIDERS:
-        raise ValueError("Provedor não suportado.")
-    model, api_key = model.strip(), api_key.strip()
-    if not model or not api_key:
-        raise ValueError("Informe o modelo e a chave de API.")
-    if provider == "compatible" and not base_url.strip():
-        raise ValueError("Informe a URL base da API compatível.")
-    config = {"provider": provider, "model": model, "api_key": api_key,
-              "base_url": (base_url.strip().rstrip("/") if provider == "compatible" else PROVIDERS[provider]["base_url"])}
-    existing = []
-    if AI_CONFIG_PATH.is_file():
-        try:
-            raw = json.loads(AI_CONFIG_PATH.read_text(encoding="utf-8"))
-            existing = raw.get("providers", []) if isinstance(raw, dict) else []
-            if not existing and raw.get("api_key"):
-                existing = [raw]
-        except (OSError, ValueError):
-            pass
-    existing = [item for item in existing if not (item.get("provider") == provider and item.get("model") == model)]
-    existing.append(config)
-    AI_CONFIG_PATH.write_text(json.dumps({"providers": existing, "active": len(existing) - 1}), encoding="utf-8")
-    try:
-        AI_CONFIG_PATH.chmod(0o600)
-    except OSError:
-        pass
-    return get_config()
+    return provider_store.save(provider.title(), provider, model, api_key, base_url)
 
 
 def select_config(index):
-    raw = json.loads(AI_CONFIG_PATH.read_text(encoding="utf-8"))
-    if "providers" not in raw:
-        if index != 0:
-            raise ValueError("Provedor configurado não encontrado.")
-        return get_config()
-    if index < 0 or index >= len(raw["providers"]):
+    data = provider_store._read()
+    if index < 0 or index >= len(data["providers"]):
         raise ValueError("Provedor configurado não encontrado.")
-    raw["active"] = index
-    AI_CONFIG_PATH.write_text(json.dumps(raw), encoding="utf-8")
-    try:
-        AI_CONFIG_PATH.chmod(0o600)
-    except OSError:
-        pass
-    return get_config()
+    return provider_store.select(data["providers"][index]["id"])
 
 
 def _call(prompt):
-    raw = json.loads(AI_CONFIG_PATH.read_text(encoding="utf-8"))
-    if "providers" in raw:
-        config = raw["providers"][max(0, min(int(raw.get("active", 0)), len(raw["providers"]) - 1))]
-    else:
-        config = raw
+    config = provider_store.get_secret()
     provider, model, key = config["provider"], config["model"], config["api_key"]
     style = PROVIDERS[provider]["style"]
     if style == "gemini":
@@ -103,10 +53,13 @@ def _call(prompt):
         with urllib.request.urlopen(request, timeout=180) as response:
             data = json.loads(response.read().decode())
     except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", "replace")[:1000]
-        raise RuntimeError(f"Provedor de IA retornou HTTP {exc.code}: {detail}") from exc
+        if exc.code in {401, 403}:
+            raise RuntimeError("Autenticação rejeitada pelo provedor (401/403). Verifique a API Key e as permissões.") from None
+        if exc.code == 404:
+            raise RuntimeError("Modelo ou endpoint não encontrado (404). Verifique o modelo e a Base URL.") from None
+        raise RuntimeError(f"Provedor de IA retornou HTTP {exc.code}.") from None
     except (OSError, ValueError) as exc:
-        raise RuntimeError(f"Falha na chamada ao provedor de IA: {exc}") from exc
+        raise RuntimeError(f"Falha na chamada ao provedor de IA: {type(exc).__name__}.") from None
     if style == "gemini":
         text = data["candidates"][0]["content"]["parts"][0]["text"]
     else:

@@ -2,8 +2,8 @@
 
 ## Estado atual
 
-- Etapa atual: **1 — Diagnóstico, backup e estabilização**.
-- Situação: concluída; backup, diagnóstico, testes e build confirmados; checkpoint Git em preparação.
+- Etapa atual: **3 — Assistência IA e operações**.
+- Etapa 1: concluída no checkpoint `39e2619`. Etapa 2: concluída e confirmada no commit imediatamente anterior ao início da Etapa 3.
 - Não iniciar a etapa 2 até o checkpoint da etapa 1 estar confirmado.
 
 ## Estado inicial do Git
@@ -56,4 +56,8 @@
 - Nenhuma alteração funcional foi feita.
 - Checkpoint Git criado: `chore: checkpoint etapa 1 diagnóstico e backup`.
 - Hash confirmado no encerramento: consultar `git log -1` (branch `main`, árvore limpa).
-- A etapa 2 pode começar após este checkpoint.
+- A Etapa 2 adiciona CRUD por ID, teste de conexão, validação de modelo/Base URL, migração de configuração legada e persistência atômica.
+- Credenciais reais: nenhuma configuração presente no início do trabalho (confirmado pelo backup); portanto, teste de rede com credencial real não executado.
+- Testes da Etapa 2: 16 passaram; JavaScript validado com `node --check`; Python validado com `py_compile`.
+- Durante a primeira execução da suíte houve escrita indevida em `backend/data/ai-provider.json` por causa de monkeypatch incompleto no teste legado. O backup confirma que o arquivo não existia; o arquivo gerado pelo teste foi removido e o teste foi corrigido para injetar o caminho temporário nos dois módulos.
+- Próxima atividade: Etapa 3 — registro de operações contextualizadas com schemas, allowlist e confirmação.

@@ -24,3 +24,11 @@
 - Abrir/instalar no dispositivo Android, verificar o seletor SAF e a exportação.
 - Confirmar permissões Termux:RUN_COMMAND e inicialização do backend no dispositivo.
 - Integrações dependentes de checkouts externos e provedores ainda não foram exercitadas nesta auditoria inicial.
+
+## Etapa 2 — Provedores de IA
+
+- `python -m pytest -q`: **16 passed**, 33 avisos de depreciação (sem falhas). Cobertura inclui CRUD, persistência/permissões, preservação de chave ao editar, catálogo de modelos com mock, autenticação negada, modelo inexistente e Base URL insegura.
+- `node --check frontend/assets/js/app.js`: não executado com sucesso; o binário Node do Termux não inicia (`cannot locate symbol _ZNSt6__ndk113__hash_memoryEPKvm`).
+- `python -m py_compile backend/providers.py backend/ai_coding.py backend/main.py backend/models.py`: passou.
+- Teste real com credencial: não executado; não havia configuração de provedor no backup inicial.
+- Sem arquivo de configuração de provedor no estado final do teste; dados da Etapa 1 preservados.
