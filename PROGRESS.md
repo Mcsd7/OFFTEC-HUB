@@ -15,7 +15,7 @@
 
 ## Backup
 
-- Arquivo: `backup local privado`.
+- Backup completo criado em diretório local privado, fora do checkout.
 - Criado sem sobrescrever cópia anterior, fora do checkout, permissão `0600`; diretório de backups `0700`.
 - Tamanho compactado: 298 MiB; inclui o checkout completo e `.git`, inclusive dados locais ignorados.
 - O arquivo foi listado após a criação para confirmar que o tar é legível.
@@ -180,7 +180,7 @@
 ## Reformulação da experiência — auditoria e checkpoints
 
 - Início sobre o checkpoint preservado `25b1764c15183e7d57ec48fe6a382a12d706906d`; árvore Git estava limpa (`main`, ahead 14 de origin).
-- Backup novo integral e verificado: `backup local privado` (312.401.642 bytes, modo `0600`, SHA-256 `[hash omitido]`). Inclui checkout, `.git`, dados ignorados e estado local; o backup anterior não foi alterado.
+- Backup novo integral e verificado em diretório local privado. Inclui checkout, `.git`, dados ignorados e estado local; o backup anterior não foi alterado.
 - Inventário arquitetural: frontend single-page em `frontend/assets/js/app.js`; API FastAPI em `backend/main.py`; credenciais globais no `backend/providers.py`; histórico comum em SQLite (`backend/database/store.py`); integração Codex isolada em `backend/codex_cli.py`/`services/codex_tasks.py`; seletor Android SAF em `MainActivity.java`.
 - Achados: provedores já têm CRUD e chave protegida, mas a configuração está embutida em Programar com IA; lista de modelos é validada/testada, não oferecida como catálogo selecionável; OFFTEC AI é chat persistente porém ocupa formulário; Codex é um formulário, aparece duplicado dentro de OFFTEC AI, exige path digitado e não tem conversas Codex persistentes. Dev Studio oferece select de projeto mas também caminho manual; APK usa seletor de arquivo WebView; DNS e tradução ainda pedem valores técnicos.
 - Nenhuma configuração local foi lida/exibida ou editada durante o inventário; dados locais e chave existentes permanecem intactos.
@@ -215,6 +215,6 @@
 - Provedores externos via API: catálogo/conexão/chat/tradução cobertos por mocks; não executada chamada real porque não há combinação de credencial/modelo comprovadamente utilizável. Nenhuma chave foi lida ou exposta nesta etapa.
 - Build debug: `gradle -p android :app:assembleDebug -Pandroid.aapt2FromMavenOverride="$PWD/android/aapt2"` — **BUILD SUCCESSFUL**, 31 tarefas, 3 executadas e 28 atualizadas. APK verificado por `unzip -t` e presença de Manifest/DEX/assets.
 - APK: `android/app/build/outputs/apk/debug/app-debug.apk`, 48.161 bytes, SHA-256 `5858606ac9e98d2ca81b6f39225edba04cc1db0bae64d839b6d5f95a2a760c8d`.
-- Backup integral da reforma preservado em `backup local privado` (SHA-256 `[hash omitido]`); backup 2.0 anterior inalterado.
+- Backup integral da reforma preservado em diretório local privado; backup 2.0 anterior inalterado.
 - Commits de implementação: `061fdf734a8dea9d2574645de364488a23937b38` (backend) e `eefbaed1ee1d0e59732695a51bbb51478f6cf180` (interface). Hash do commit final será o HEAD do fechamento dos relatórios.
 - ADB/aparelho Android não estão disponíveis neste ambiente; validação touch/SAF/WebView instalado permanece pendente. Catálogo visual limitado a projetos de primeiro nível em `~/Projects` e `~/HUB`; não foi adicionado seletor SAF genérico de pastas.

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-09 — OFFTEC HUB v0.2.0
+
+- Chat IA por API com provedores compartilhados e configuração protegida.
+- Chat Codex CLI independente, com histórico, execução em cópia isolada e aplicação de alterações após confirmação.
+- Seletor visual de projetos, diagnóstico do Codex e fallback para execução.
+- Melhorias no Dev Studio, tradução, cancelamento de tarefas e apresentação de resultados.
+- APK debug para Android; instalação e validação em aparelho físico ainda dependem de dispositivo.
+
 ## 2026-11-09 — OFFTEC HUB 2.2 · serviços compartilhados
 
 - OpenRouter e catálogo de modelos API foram integrados ao serviço global de provedores existente; configuração salva permanece no arquivo protegido e a chave não é retornada.

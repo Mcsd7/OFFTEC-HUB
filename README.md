@@ -1,4 +1,4 @@
-# OFFTEC HUB
+# OFFTEC HUB v0.2.0
 
 Aplicativo Android com WebView e um backend FastAPI local no Termux. A API escuta apenas em `127.0.0.1:8765`; o frontend é empacotado como assets do APK e pode mostrar o assistente mesmo antes de o backend iniciar.
 

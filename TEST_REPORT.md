@@ -1,5 +1,13 @@
 # Relatório de testes
 
+## OFFTEC HUB v0.2.0 — publicação
+
+- `python -m pytest -q`: **46 passed**, 61 avisos de depreciação, sem falhas.
+- `py_compile` do backend, `node --check` dos arquivos JavaScript e `git diff --check`: passaram.
+- `gradle -p android :app:assembleDebug -Pandroid.aapt2FromMavenOverride="$PWD/android/aapt2"`: **BUILD SUCCESSFUL**.
+- APK debug versão `0.2.0` (versionCode 2), 42.163 bytes; SHA-256 `0939fea765dc66991e78a433e0f777b0f0ed05ce24ab1b2c1f41c28c003b4b81`.
+- `unzip -t` e `apksigner verify --verbose`: APK íntegro e assinatura debug v2 válida. O artefato contém Manifest, DEX e assets atualizados. Nenhum aparelho Android estava conectado para teste de instalação.
+
 ## Etapa 1 — Base do projeto
 
 ### Automatizados
@@ -10,7 +18,7 @@
 
 ### Backup
 
-- Arquivo compactado criado em `backup local privado` com modo `0600`.
+- Arquivo compactado criado em diretório local privado com modo `0600`.
 - `tar -tzf` listou o conteúdo até os arquivos de referência Git sem erro.
 
 ### Android
@@ -142,8 +150,7 @@
 
 ### Backup e estado preservado
 
-- Backup completo criado antes das alterações, sem sobrescrever o backup 2.0/2.1: `backup local privado`.
-- Tamanho: 312.401.642 bytes; modo `0600`; SHA-256 `[hash omitido]`. O arquivo foi listado com `tar -tzf`.
+- Backup completo criado e verificado antes das alterações, em diretório local privado, sem sobrescrever o backup 2.0/2.1.
 - O trabalho partiu do commit `25b1764c15183e7d57ec48fe6a382a12d706906d`, sem alterações na configuração/API Key local nem nos artefatos anteriores.
 
 ### Serviços/backend
