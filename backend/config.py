@@ -14,7 +14,14 @@ READROID_PATH = Path(os.environ.get("OFFTEC_READROID_PATH", Path.home() / "ReaDr
 PORTAI_PATH = Path(os.environ.get("OFFTEC_PORTAI_PATH", Path.home() / "OffTec-PortAI")).expanduser()
 MAX_UPLOAD_BYTES = 250 * 1024 * 1024
 
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-TRANSLATION_DIR.mkdir(parents=True, exist_ok=True)
-LOG_DIR.mkdir(parents=True, exist_ok=True)
+for private_dir in (DATA_DIR, UPLOAD_DIR, TRANSLATION_DIR, DATA_DIR / "rebuild_plans", DATA_DIR / "workspaces", DATA_DIR / "codex_runs", DATA_DIR / "codex_workspaces"):
+    private_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        private_dir.chmod(0o700)
+    except OSError:
+        pass
+LOG_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+try:
+    LOG_DIR.chmod(0o700)
+except OSError:
+    pass

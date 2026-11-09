@@ -131,7 +131,7 @@ async def execute(tool_id, args, confirmed=False):
     elif tool_id == "project.test":
         from .main import ai_test
         from .models import ProjectTestRequest
-        result = await ai_test(ProjectTestRequest(path=args["path"]))
+        result = await ai_test(ProjectTestRequest(path=args["path"], confirmed=True))
     elif tool_id == "project.create":
         from .main import create_project
         from .models import ProjectCreate

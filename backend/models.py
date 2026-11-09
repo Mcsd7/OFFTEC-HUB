@@ -88,9 +88,11 @@ class CodexRunRequest(BaseModel):
 class AiProgramRequest(BaseModel):
     path: str = Field(min_length=1, max_length=2048)
     prompt: str = Field(min_length=1, max_length=12000)
+    confirmed: bool = False
 
 class ProjectCreate(BaseModel):
     name: str = Field(min_length=1, max_length=80, regex=r"^[A-Za-z0-9][A-Za-z0-9._ -]*$")
 
 class ProjectTestRequest(BaseModel):
     path: str = Field(min_length=1, max_length=2048)
+    confirmed: bool = False

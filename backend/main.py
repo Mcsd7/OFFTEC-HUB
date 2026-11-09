@@ -30,6 +30,10 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("offtec.hub")
 if not log.handlers:
     log.addHandler(RotatingFileHandler(LOG_DIR / "hub.log", maxBytes=1_000_000, backupCount=2, encoding="utf-8"))
+try:
+    (LOG_DIR / "hub.log").chmod(0o600)
+except OSError:
+    pass
 TOKEN = session_token()
 app = FastAPI(title="OFFTEC HUB API", version="0.1.0", docs_url="/api/v1/docs", openapi_url="/api/v1/openapi.json")
 app.add_middleware(CORSMiddleware, allow_origins=["http://127.0.0.1", "https://appassets.androidplatform.net"], allow_methods=["GET", "POST"], allow_headers=["Authorization", "Content-Type"])
@@ -165,6 +169,7 @@ async def upload_apk(file: UploadFile = File(...)):
                 if size > MAX_UPLOAD_BYTES:
                     raise HTTPException(413, "Arquivo excede 250 MiB")
                 output.write(data)
+        target.chmod(0o600)
     except Exception:
         target.unlink(missing_ok=True)
         raise
@@ -594,6 +599,8 @@ def ai_config_select(index: int):
 
 @app.post("/api/v1/ai/program", dependencies=[Depends(authorize)])
 async def ai_program(request: AiProgramRequest):
+    if not request.confirmed:
+        raise HTTPException(409, "Confirme explicitamente as alterações no projeto selecionado.")
     project = _project_path(request.path)
     if not ai_coding.get_config().get("configured"):
         raise HTTPException(409, "Configure uma API de IA antes de programar.")
@@ -612,6 +619,8 @@ async def ai_program(request: AiProgramRequest):
 @app.post("/api/v1/ai/test", dependencies=[Depends(authorize)])
 async def ai_test(request: ProjectTestRequest):
     import subprocess
+    if not request.confirmed:
+        raise HTTPException(409, "Confirme a execução dos testes do projeto selecionado.")
     project = _project_path(request.path)
     commands = []
     if (project / "pytest.ini").exists() or (project / "pyproject.toml").exists() or (project / "tests").is_dir():
@@ -667,6 +676,7 @@ async def translation_preview(request: TranslationPreview):
         payload = result.to_dict()
         session_file = TRANSLATION_DIR / f"{session_id}.json"
         session_file.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        session_file.chmod(0o600)
         visible = payload["entries"][:300]
         response = {"session_id": session_id, "provider": result.provider, "project": str(root),
                     "targets": result.targets, "entry_count": len(payload["entries"]), "entries": visible,
@@ -675,8 +685,8 @@ async def translation_preview(request: TranslationPreview):
         store.record("dev_studio", "translation_preview", "success", {k: v for k, v in response.items() if k != "entries"})
         return response
     except Exception as exc:
-        store.record("dev_studio", "translation_preview", "error", {"error": str(exc)})
-        raise HTTPException(422, str(exc))
+        store.record("dev_studio", "translation_preview", "error", {"error": type(exc).__name__})
+        raise HTTPException(422, f"Falha na prévia de tradução: {type(exc).__name__}.") from None
 
 @app.post("/api/v1/dev/translation/apply", dependencies=[Depends(authorize)])
 async def translation_apply(request: TranslationApply):
@@ -703,9 +713,9 @@ async def translation_apply(request: TranslationApply):
         store.record("dev_studio", "translation_apply", "success", output_result)
         return output_result
     except Exception as exc:
-        log.exception("PortAI translation application failed")
-        store.record("dev_studio", "translation_apply", "error", {"error": str(exc)})
-        raise HTTPException(422, str(exc))
+        log.error("PortAI translation application failed (%s)", type(exc).__name__)
+        store.record("dev_studio", "translation_apply", "error", {"error": type(exc).__name__})
+        raise HTTPException(422, f"Falha ao aplicar tradução: {type(exc).__name__}.") from None
 
 @app.get("/api/v1/history", dependencies=[Depends(authorize)])
 def history():

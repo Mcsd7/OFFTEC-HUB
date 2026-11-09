@@ -2,9 +2,9 @@
 
 ## Estado atual
 
-- Etapa atual: **9 — Segurança e desempenho**.
-- Etapa 1: concluída no checkpoint `39e2619`. Etapa 2: concluída e confirmada no commit imediatamente anterior ao início da Etapa 3.
-- Não iniciar a etapa 2 até o checkpoint da etapa 1 estar confirmado.
+- Etapa atual: **9 — Segurança e desempenho concluída**; próxima etapa pendente: **10 — testes finais e compilação**.
+- Último checkpoint confirmado antes desta atualização: `d33af9c` (Etapa 8). Etapas 1–8 permanecem registradas nos commits anteriores.
+- A Etapa 10 não foi iniciada nesta sessão, conforme solicitado.
 
 ## Estado inicial do Git
 
@@ -123,3 +123,14 @@
 - Testes backend: 30 passaram; módulos Codex compilados. Build/instalação WebView real será feito na etapa 10.
 - Limites restantes: respostas em streaming não estão habilitadas; Codex registra eventos JSONL ao concluir, com indicador de tarefa, sem renderizar cada evento ao vivo.
 - Próxima atividade: hardened paths, dados locais, limites, concorrência e tratamento de segredos.
+
+### Etapa 9 — segurança e desempenho concluída
+
+- Diretórios de dados, uploads, traduções e workspaces recebem permissões privadas; token de sessão, banco, log e arquivos enviados/sessões de tradução recebem permissões restritas quando suportadas pelo sistema de arquivos.
+- Execuções potencialmente pesadas do backend foram limitadas a uma por vez para reduzir pressão de memória no dispositivo.
+- Programação assistida e execução de testes de projeto exigem confirmação explícita também no backend; os testes cobrem a recusa sem confirmação e o fluxo confirmado.
+- Erros de tradução não incluem texto potencialmente sensível em logs/respostas.
+- Verificações desta etapa: `python -m pytest -q` — 31 testes passaram; `git diff --check` — sem erros. Os testes Python foram executados antes do fechamento desta etapa; nenhuma nova suíte foi executada durante o encerramento seguro.
+- Revisão do diff: somente nove arquivos da implementação/testes e este registro de progresso; sem arquivos de segredo ou dados locais incluídos.
+- Checkpoint Git de segurança e desempenho criado junto com este registro; o hash final é confirmado pelo `git log -1`.
+- Próxima atividade: Etapa 10 — auditoria final, testes finais e compilação do APK debug. Ainda não iniciada.

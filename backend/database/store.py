@@ -1,11 +1,16 @@
 import json
 import sqlite3
+import os
 from datetime import datetime, timezone
 from ..config import DB_PATH
 
 
 def connect():
     db = sqlite3.connect(DB_PATH)
+    try:
+        os.chmod(DB_PATH, 0o600)
+    except OSError:
+        pass
     db.row_factory = sqlite3.Row
     return db
 

@@ -589,12 +589,29 @@ def test_ai_program_applies_only_relative_files_inside_selected_project(tmp_path
     ai_coding.save_config("groq", "test-model", "test-key")
     monkeypatch.setattr(ai_coding, "_call", lambda prompt: {"summary": "created file", "files": [{"path": "src/main.py", "content": "print('real file write')\n"}]})
     with client() as c:
-        response = c.post("/api/v1/ai/program", headers=auth(), json={"path": str(project), "prompt": "Create the entry point"})
+        refused = c.post("/api/v1/ai/program", headers=auth(), json={"path": str(project), "prompt": "Create the entry point"})
+        assert refused.status_code == 409
+        response = c.post("/api/v1/ai/program", headers=auth(), json={"path": str(project), "prompt": "Create the entry point", "confirmed": True})
         assert response.status_code == 200, response.text
         assert response.json()["changed_files"] == ["src/main.py"]
         assert (project / "src/main.py").read_text() == "print('real file write')\n"
     monkeypatch.setattr(ai_coding, "_call", lambda prompt: {"summary": "escape", "files": [{"path": "../outside", "content": "bad"}]})
     with client() as c:
-        response = c.post("/api/v1/ai/program", headers=auth(), json={"path": str(project), "prompt": "escape"})
+        response = c.post("/api/v1/ai/program", headers=auth(), json={"path": str(project), "prompt": "escape", "confirmed": True})
         assert response.status_code == 422
     assert not (tmp_path / "outside").exists()
+
+
+def test_project_test_execution_requires_confirmation(tmp_path, monkeypatch):
+    import subprocess
+    project = tmp_path / "run-tests"
+    (project / "tests").mkdir(parents=True)
+    monkeypatch.setattr("backend.main.shutil.which", lambda name: "/usr/bin/pytest" if name == "pytest" else None)
+    monkeypatch.setattr("backend.main.run_blocking", lambda fn, *args, **kwargs: __import__("asyncio").to_thread(fn, *args, **kwargs))
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, "ok", ""))
+    with client() as c:
+        data = {"path": str(project)}
+        refused = c.post("/api/v1/ai/test", headers=auth(), json=data)
+        assert refused.status_code == 409
+        result = c.post("/api/v1/ai/test", headers=auth(), json={**data, "confirmed": True})
+        assert result.status_code == 200 and result.json()["passed"] is True
