@@ -69,3 +69,11 @@
 - `python -m py_compile backend/*.py backend/core/*.py backend/database/*.py backend/modules/*.py backend/services/*.py`: passou.
 - Testes incluem DNS real `localhost`, allowlist/schema de operações e rejeição de diretórios e saídas inseguras.
 - ReaDroid, PortAI e NetScope dependem de checkouts externos ausentes neste ambiente e permanecem sem validação funcional real.
+
+## Etapa 8 — Interface/tarefas
+
+- `python -m pytest -q`: **30 passed**, 53 avisos.
+- `tree-sitter-javascript` analisou `frontend/assets/js/app.js`: sem erro sintático.
+- Script de inventário encontrou 39 ações `data-action` e zero ações sem handler.
+- Node não executa por símbolo nativo ausente; WebView/dispositivo real não disponível.
+- Codex e chat têm polling/cancelamento, com eventos JSONL Codex apresentados somente no resultado final, não em streaming.

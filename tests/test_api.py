@@ -502,15 +502,24 @@ def test_codex_run_uses_isolated_copy_and_never_disables_approvals(tmp_path, mon
     monkeypatch.setattr(codex_cli, "_copy_project", copy_project)
     commands = []
 
-    def fake_run(command, **kwargs):
-        commands.append(command)
-        if command[0] == "/usr/bin/codex":
-            assert "--yolo" not in command and "--full-auto" not in command
-            assert command[command.index("--sandbox") + 1] == "workspace-write"
+    class FakeProcess:
+        returncode = 0
+        def communicate(self, timeout=None):
             event = {"type": "item.completed", "item": {"type": "agent_message", "text": "Codex response"}}
-            return subprocess.CompletedProcess(command, 0, json.dumps(event) + "\n", "")
+            return json.dumps(event) + "\n", ""
+        def terminate(self): self.returncode = -15
+        def kill(self): self.returncode = -9
+
+    def fake_popen(command, **kwargs):
+        commands.append(command)
+        assert "--yolo" not in command and "--full-auto" not in command
+        assert command[command.index("--sandbox") + 1] == "workspace-write"
+        return FakeProcess()
+
+    def fake_run(command, **kwargs):
         return subprocess.CompletedProcess(command, 0, " M app.py\n", "")
 
+    monkeypatch.setattr(codex_cli.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(codex_cli.subprocess, "run", fake_run)
     result = codex_cli.run_task(source, "Fix app", confirmed=True)
     assert result["status"] == "success"
@@ -540,6 +549,35 @@ def test_codex_workspace_copy_omits_common_secret_files(tmp_path):
     assert (destination / "main.py").is_file()
     assert not (destination / ".env").exists()
     assert not (destination / "signing.pem").exists()
+
+
+def test_codex_task_cancel_endpoint_sets_cooperative_process_cancel(tmp_path, monkeypatch):
+    import threading
+    import time
+    from backend import codex_cli
+    started, release = threading.Event(), threading.Event()
+
+    def fake_run(project, prompt, confirmed, test_only=False, cancel_event=None):
+        started.set()
+        release.wait(4)
+        assert cancel_event.is_set()
+        return {"status": "cancelled", "run_id": "a" * 32, "workspace": str(tmp_path), "files": []}
+
+    monkeypatch.setattr(codex_cli, "run_task", fake_run)
+    source = tmp_path / "project"
+    source.mkdir()
+    with client() as c:
+        created = c.post("/api/v1/codex/run", headers=auth(), json={"path": str(source), "prompt": "A task", "confirmed": True})
+        task_id = created.json()["task_id"]
+        assert started.wait(2)
+        cancel = c.post(f"/api/v1/codex/tasks/{task_id}/cancel", headers=auth())
+        assert cancel.json()["status"] == "cancelling"
+        release.set()
+        for _ in range(40):
+            state = c.get(f"/api/v1/codex/tasks/{task_id}", headers=auth()).json()
+            if state["status"] == "cancelled": break
+            time.sleep(0.05)
+        assert state["status"] == "cancelled"
 
 
 def test_ai_program_applies_only_relative_files_inside_selected_project(tmp_path, monkeypatch):

@@ -86,7 +86,7 @@ def _copy_project(source, destination):
     subprocess.run(["git", "-c", "user.name=OFFTEC HUB", "-c", "user.email=offtec@localhost", "commit", "-qm", "workspace baseline"], cwd=destination, capture_output=True, timeout=30, check=True)
 
 
-def run_task(project, prompt, confirmed=False, test_only=False):
+def run_task(project, prompt, confirmed=False, test_only=False, cancel_event=None):
     if not confirmed:
         raise PermissionError("Confirme a execução no workspace isolado.")
     diagnostic = inspect()
@@ -109,9 +109,33 @@ def run_task(project, prompt, confirmed=False, test_only=False):
         if not test_only:
             command += ["--sandbox", "workspace-write"]
         command.append(prompt)
-        completed = subprocess.run(command, cwd=workspace, capture_output=True, text=True, timeout=900, check=False)
+        if cancel_event is not None and cancel_event.is_set():
+            return {"run_id": run_id, "workspace": str(workspace), "returncode": 130, "status": "cancelled",
+                    "response": "", "events": [], "errors": [], "files": [], "stdout_tail": "", "stderr_tail": "Cancelado antes de iniciar."}
+        process = subprocess.Popen(command, cwd=workspace, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        deadline = __import__("time").monotonic() + 900
+        cancelled = False
+        while True:
+            try:
+                stdout, stderr = process.communicate(timeout=1)
+                break
+            except subprocess.TimeoutExpired:
+                if cancel_event is not None and cancel_event.is_set():
+                    cancelled = True
+                    process.terminate()
+                    try:
+                        stdout, stderr = process.communicate(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        stdout, stderr = process.communicate()
+                    break
+                if __import__("time").monotonic() >= deadline:
+                    process.kill()
+                    process.communicate()
+                    raise RuntimeError("Execução do Codex excedeu 900 segundos.")
+        returncode = process.returncode
         events, assistant_messages, errors = [], [], []
-        for line in completed.stdout.splitlines():
+        for line in stdout.splitlines():
             try:
                 event = json.loads(line)
             except ValueError:
@@ -122,17 +146,15 @@ def run_task(project, prompt, confirmed=False, test_only=False):
             if event.get("type") in {"error", "turn.failed"}: errors.append(event)
         # Remove the committed baseline from comparison and read tracked worktree changes.
         changed = subprocess.run(["git", "status", "--short"], cwd=workspace, capture_output=True, text=True, timeout=10, check=False).stdout.splitlines()
-        result = {"run_id": run_id, "workspace": str(workspace), "returncode": completed.returncode,
-                  "status": "success" if completed.returncode == 0 else "error", "response": "\n".join(assistant_messages)[-12000:],
+        result = {"run_id": run_id, "workspace": str(workspace), "returncode": returncode,
+                  "status": "cancelled" if cancelled else "success" if returncode == 0 else "error", "response": "\n".join(assistant_messages)[-12000:],
                   "events": events[-100:], "errors": errors, "files": changed,
-                  "stdout_tail": completed.stdout[-4000:], "stderr_tail": completed.stderr[-4000:]}
+                  "stdout_tail": stdout[-4000:], "stderr_tail": stderr[-4000:]}
         RUN_DIR.mkdir(parents=True, exist_ok=True)
         run_file = RUN_DIR / f"{run_id}.json"
         run_file.write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
         run_file.chmod(0o600)
         return result
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError("Execução do Codex excedeu 900 segundos.") from exc
     except Exception:
         if workspace.exists() and not any(workspace.iterdir()):
             workspace.rmdir()

@@ -2,7 +2,7 @@
 
 ## Estado atual
 
-- Etapa atual: **8 — Interface e experiência do usuário**.
+- Etapa atual: **9 — Segurança e desempenho**.
 - Etapa 1: concluída no checkpoint `39e2619`. Etapa 2: concluída e confirmada no commit imediatamente anterior ao início da Etapa 3.
 - Não iniciar a etapa 2 até o checkpoint da etapa 1 estar confirmado.
 
@@ -112,3 +112,14 @@
 - Foram bloqueados paths fora do HOME/temporário na análise PortAI/tradução e destinos de tradução que cruzam ou substituem a origem.
 - Testes: 29 passaram; `py_compile` em todos os módulos passou. Checkouts ReaDroid/PortAI/NetScope reais não estão instalados neste ambiente, então não houve execução de suas ferramentas externas reais.
 - Próxima atividade: concluir estados visuais, responsividade, feedback de tarefas e cancelamento do Codex.
+
+### Etapa 8 — concluída no ambiente disponível
+
+- OFFTEC AI e Codex têm estado de execução, polling, mensagens de erro, cancelar, cartões de conversa/provedor e apresentação de código/resultados.
+- Codex agora executa como tarefa cancelável; cancelar encerra o processo local e guarda status/resultado.
+- APK assistido exibe plano, resultados disponíveis, limitações, progresso e cancelamento; operações longas do chat/AI/Codex não bloqueiam o ciclo principal do backend.
+- Mapeamento estático frontend: 39 ações com `data-action`, nenhuma sem ramo correspondente no dispatcher.
+- `tree-sitter-javascript` parseou `frontend/assets/js/app.js` sem erro. O Node CLI do Termux continua sem iniciar, portanto execução de JavaScript em navegador real não foi possível.
+- Testes backend: 30 passaram; módulos Codex compilados. Build/instalação WebView real será feito na etapa 10.
+- Limites restantes: respostas em streaming não estão habilitadas; Codex registra eventos JSONL ao concluir, com indicador de tarefa, sem renderizar cada evento ao vivo.
+- Próxima atividade: hardened paths, dados locais, limites, concorrência e tratamento de segredos.

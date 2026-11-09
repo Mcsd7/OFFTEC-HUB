@@ -549,30 +549,34 @@ async def codex_test(request: CodexRunRequest):
     if not request.confirmed:
         raise HTTPException(409, "Confirme o teste de leitura no workspace temporário.")
     project = _project_path(request.path)
-    from . import codex_cli
-    try:
-        result = await run_blocking(codex_cli.run_task, project, "Responda somente CODEX_TEST_OK. Não altere arquivos nem execute comandos.", True, True)
-        store.record("codex", "smoke_test", result["status"], {"run_id": result["run_id"], "returncode": result["returncode"]})
-        return result
-    except RuntimeError as exc:
-        raise HTTPException(503, str(exc)) from None
-    except ValueError as exc:
-        raise HTTPException(400, str(exc))
+    from .services import codex_tasks
+    task_id = codex_tasks.start(project, "Responda somente CODEX_TEST_OK. Não altere arquivos nem execute comandos.", test_only=True)
+    return {"task_id": task_id, "status": "running"}
 
 @app.post("/api/v1/codex/run", dependencies=[Depends(authorize)])
 async def codex_run(request: CodexRunRequest):
     if not request.confirmed:
         raise HTTPException(409, "Confirme a tarefa Codex antes de criar e modificar o workspace.")
     project = _project_path(request.path)
-    from . import codex_cli
-    try:
-        result = await run_blocking(codex_cli.run_task, project, request.prompt, True, False)
-        store.record("codex", "exec", result["status"], {"run_id": result["run_id"], "workspace": result["workspace"], "changed_files": result["files"], "returncode": result["returncode"]})
-        return result
-    except RuntimeError as exc:
-        raise HTTPException(503, str(exc)) from None
-    except ValueError as exc:
-        raise HTTPException(400, str(exc))
+    from .services import codex_tasks
+    task_id = codex_tasks.start(project, request.prompt, test_only=False)
+    return {"task_id": task_id, "status": "running"}
+
+@app.get("/api/v1/codex/tasks/{task_id}", dependencies=[Depends(authorize)])
+def codex_task_status(task_id: str):
+    from .services import codex_tasks
+    result = codex_tasks.get(task_id)
+    if result is None:
+        raise HTTPException(404, "Tarefa Codex não encontrada.")
+    return result
+
+@app.post("/api/v1/codex/tasks/{task_id}/cancel", dependencies=[Depends(authorize)])
+def codex_task_cancel(task_id: str):
+    from .services import codex_tasks
+    result = codex_tasks.cancel(task_id)
+    if result is None:
+        raise HTTPException(404, "Tarefa Codex não encontrada.")
+    return result
 
 @app.put("/api/v1/ai/config", dependencies=[Depends(authorize)])
 def ai_config_save(request: AiProviderConfig):

@@ -47,3 +47,9 @@
 - Auditoria de endpoints e controles; paths de análise/tradução agora são limitados e saídas não podem atingir a origem.
 - Ferramentas contextuais incluem DNS, NetScope, Manifest e testes de projeto com confirmação.
 - Falhas de adaptador ReaDroid são tratadas. 29 testes passaram.
+
+## 2026-11-09 — Etapa 8
+
+- Adicionados polling, feedback, cancelamento de processo Codex, chat com cancelamento e UI das tarefas.
+- Validado que as ações `data-action` mapeiam para handlers; JavaScript passou no parser tree-sitter.
+- 30 testes passaram. Teste visual em dispositivo continua pendente.
