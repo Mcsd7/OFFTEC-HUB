@@ -205,3 +205,16 @@
 - Caminhos manuais removidos de Codex, Dev Studio, Programar com IA e destino de tradução; traduções escolhem destino automaticamente. O seletor Android SAF existente continua selecionando APK.
 - Auditoria estática encontrou 46 ações no dispatcher sem ação ausente; o seletor visual apresenta projetos de `~/Projects` e o workspace `~/HUB`, com tipo detectado. Somente arquivos/pastas nas raízes autorizadas aparecem.
 - Limites para validação final: não há WebView Android/adb disponível para teste visual instalado; não foi feita consulta a API de modelo real porque a configuração local não comprova chave/modelo utilizável. Catálogo real, conexão e traduções têm cobertura mockada.
+
+### Fase C — verificação final e APK (concluída)
+
+- Suíte completa: `python -m pytest -q` — **46 passaram**, 61 avisos de depreciação existentes de FastAPI/Starlette/asyncio. Inclui APIs, provedores/modelos, segredo não retornado, persistência dos dois históricos, seleção de projeto, paths, chat sem projeto, cópia Codex, confirmação/backup/conflito de aplicação, tradução global, arquivos APK e regressões estáticas da UI.
+- Todos os módulos backend passaram em `py_compile`; `env -u LD_LIBRARY_PATH node --check frontend/assets/js/app.js` e `git diff --check` passaram.
+- Smoke real Codex pela rota API, sem projeto: status `success`, método `main`, duas mensagens persistidas e resposta do CLI.
+- Smoke real Codex em projeto temporário: tarefa escreveu `result.txt` contendo `REAL_CODEX_CHAT_TASK_OK` na cópia; origem permaneceu intacta. Main/Fallback real previamente testados no checkpoint 2.1; nesta alteração, o chat persistente usa o mesmo seletor de método e o fallback tem cobertura automatizada.
+- Provedores externos via API: catálogo/conexão/chat/tradução cobertos por mocks; não executada chamada real porque não há combinação de credencial/modelo comprovadamente utilizável. Nenhuma chave foi lida ou exposta nesta etapa.
+- Build debug: `gradle -p android :app:assembleDebug -Pandroid.aapt2FromMavenOverride="$PWD/android/aapt2"` — **BUILD SUCCESSFUL**, 31 tarefas, 3 executadas e 28 atualizadas. APK verificado por `unzip -t` e presença de Manifest/DEX/assets.
+- APK: `android/app/build/outputs/apk/debug/app-debug.apk`, 48.161 bytes, SHA-256 `5858606ac9e98d2ca81b6f39225edba04cc1db0bae64d839b6d5f95a2a760c8d`.
+- Backup integral da reforma preservado em `backup local privado` (SHA-256 `[hash omitido]`); backup 2.0 anterior inalterado.
+- Commits de implementação: `061fdf734a8dea9d2574645de364488a23937b38` (backend) e `eefbaed1ee1d0e59732695a51bbb51478f6cf180` (interface). Hash do commit final será o HEAD do fechamento dos relatórios.
+- ADB/aparelho Android não estão disponíveis neste ambiente; validação touch/SAF/WebView instalado permanece pendente. Catálogo visual limitado a projetos de primeiro nível em `~/Projects` e `~/HUB`; não foi adicionado seletor SAF genérico de pastas.

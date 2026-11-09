@@ -136,3 +136,54 @@
 
 - Caminho: `android/app/build/outputs/apk/debug/app-debug.apk`.
 - Tamanho: 44.770 bytes. SHA-256: `e8544011baaf3e9751e1a2fd79d0b6a27006a1552a6da309f26b778700399853`.
+
+
+## OFFTEC HUB 2.2 — experiência unificada, CHAT IA e Codex CLI
+
+### Backup e estado preservado
+
+- Backup completo criado antes das alterações, sem sobrescrever o backup 2.0/2.1: `backup local privado`.
+- Tamanho: 312.401.642 bytes; modo `0600`; SHA-256 `[hash omitido]`. O arquivo foi listado com `tar -tzf`.
+- O trabalho partiu do commit `25b1764c15183e7d57ec48fe6a382a12d706906d`, sem alterações na configuração/API Key local nem nos artefatos anteriores.
+
+### Serviços/backend
+
+- Provedores cobertos: Gemini, Groq, OpenAI, OpenRouter e OpenAI-compatible/custom. Cobertura usa chaves fictícias em `tmp_path` e `urlopen` mockado; validou consulta de modelos, default, API Key ausente das respostas e reutilização do armazenamento central.
+- PortAI tradução: teste mock comprovou uso do `providers.chat` central; sem configuração global o provider offline preservado continua disponível. Destino automático cria pasta exclusiva; aplicação é bloqueada se o destino já existir. O arquivo de origem permanece intacto nos testes.
+- Histórico: conversa Chat IA segue no histórico SQLite anterior; conversas Codex usam tabelas próprias, persistem mensagens/contexto e não compartilham conversas entre si.
+- Seleção visual: teste API cobre projeto Android, workspace genérico e `~/HUB`; nenhuma operação exige path digitado nas telas atualizadas. Path é validado no backend e não devolvido em detalhes da conversa Codex.
+- Codex: workspace sem arquivos agora inicializa com baseline Git vazio. Execução continua em cópia isolada; aplicar arquivo ao original exige `confirmed=true`, valida baseline/conflictos, ignora caminhos inseguros/segredos/deleções e mantém backup privado para arquivos substituídos. Teste cobre confirmação, alteração, backup e conflito após modificação concorrente.
+
+### Interface e integração
+
+- Navegação separa Configuração de IA, Chat IA e Codex CLI. Não existe chamada do painel Codex dentro do chat da API.
+- Chat IA mantém histórico, troca provedor/modelo global, cria/renomeia/exclui conversas, exibe loading/erro e permite cancelar. Resposta incremental via streaming não foi implementada; API de chat retorna resposta após a conclusão.
+- Codex tem chat independente, histórico, escolha opcional de projeto, pergunta sem projeto em sandbox somente leitura, seleção main/fallback, diagnóstico de versão/autenticação, progresso/cancelamento, resposta e manifesto de arquivos. Projeto usa cópia isolada; alterações ao original só são aplicadas após confirmação.
+- Campos manuais de projeto removidos em Codex, Dev Studio e Programar com IA; destino de tradução é automático. Android SAF/WebView existente continua usando seletor nativo de APK.
+- Inventário estático: 46 ações `data-action`, todas associadas a handler; `node --check` passou com `LD_LIBRARY_PATH` removido. A árvore da UI foi atualizada sem biblioteca visual externa.
+
+### Testes executados nesta reforma
+
+- `python -m py_compile $(rg --files backend -g '*.py' | sort)`: passou.
+- `env -u LD_LIBRARY_PATH node --check frontend/assets/js/app.js`: passou.
+- `git diff --check`: passou.
+- `python -m pytest -q`: **46 passed**, 61 avisos de depreciação de FastAPI/Starlette/asyncio, sem falhas.
+- Teste real Codex, sem projeto, via `POST /api/v1/codex/chat`: `success`, método `main`, conversa com duas mensagens e resposta do CLI persistida. O teste usou diretório de dados temporário.
+- Teste real Codex, projeto temporário: o CLI criou `result.txt` com marcador esperado dentro do workspace e a origem permaneceu intacta. Workspace e dados temporários foram removidos ao fim do smoke.
+- A execução real anterior de main e fallback Codex permanece registrada na seção 2.1. Nesta reforma, o novo chat encaminha o método selecionado ao mesmo executor; seleção/retry têm cobertura automatizada, mas não foi repetido um smoke real pelo fallback dentro do novo chat.
+- Provedor de IA externo: **não executado com rede/credencial real**. Não havia um par chave/modelo demonstravelmente válido para uma chamada autorizada nesta rodada; testes de catálogo, conversa, API compartilhada e tradução foram mockados. Nenhuma credencial foi lida, enviada ou exibida nos testes desta reforma.
+
+### Compilação e limites do dispositivo
+
+- Build: `gradle -p android :app:assembleDebug -Pandroid.aapt2FromMavenOverride="$PWD/android/aapt2"` — **BUILD SUCCESSFUL**, 31 tarefas (3 executadas, 28 atualizadas).
+- APK verificado com `unzip -t`; contém `AndroidManifest.xml`, `classes.dex`, `assets/assets/js/app.js` e `assets/assets/css/app.css`.
+- Caminho: `android/app/build/outputs/apk/debug/app-debug.apk`.
+- Tamanho: 48.161 bytes. SHA-256: `5858606ac9e98d2ca81b6f39225edba04cc1db0bae64d839b6d5f95a2a760c8d`.
+- Nenhum `adb`/aparelho Android estava disponível; instalação, toque, acessibilidade e execução real do SAF/WebView continuam pendentes. O navegador de projetos lista raízes autorizadas `~/Projects` (nível imediato) e `~/HUB`; um navegador SAF genérico de pastas não foi criado. Se uma API não implementar tool calling ou saída JSON estruturada, a UI/backend informa para selecionar um modelo compatível.
+- Chat IA não faz streaming; Codex retorna eventos/saída por polling durante a execução, não é um terminal interativo persistente. A continuidade é feita por histórico e cópias de workspace entre turnos.
+
+### Commits de implementação
+
+- Backend/serviços: `061fdf734a8dea9d2574645de364488a23937b38`.
+- Interface/experiência: `eefbaed1ee1d0e59732695a51bbb51478f6cf180`.
+- Commit de relatórios e estado final: consultar o HEAD da branch `main` após este fechamento.

@@ -43,3 +43,9 @@ Base preservada: commit `25b1764c15183e7d57ec48fe6a382a12d706906d`. Backup integ
 | E. Fechamento | Executar suítes, smokes isolados, build APK, atualizar os três relatórios e commit por fase. | `pytest`, validação JS/Python, Gradle com override AAPT2, `git status` limpo e hash/artefato. |
 
 Limite de segurança: o Codex nunca recebe automaticamente modos de bypass; escrita permanece confirmada e isolada em cópia. Um projeto ausente dá acesso de conversa somente leitura a um workspace vazio. Nenhuma chamada via API global substitui o Codex real.
+
+### Fechamento da reformulação
+
+- Fases A–C concluídas em 09/11/2026; evidências e limites estão no `PROGRESS.md` e `TEST_REPORT.md`.
+- Commits de implementação: backend `061fdf734a8dea9d2574645de364488a23937b38`; frontend `eefbaed1ee1d0e59732695a51bbb51478f6cf180`.
+- 46 testes passaram e APK debug compilou. Teste em aparelho e chamada real a provedor externo permanecem pendentes pelos limites ambientais documentados.

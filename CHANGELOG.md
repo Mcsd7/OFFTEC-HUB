@@ -17,6 +17,14 @@
 - Removidos campos manuais de path no Dev Studio, Programar com IA, Codex e destino de tradução; o seletor APK Android existente foi mantido.
 - 46 ações frontend mapeadas para handlers; WebView Android visual permanece sem teste em aparelho.
 
+## 2026-11-09 — OFFTEC HUB 2.2 · validação final
+
+- `python -m pytest -q`: 46 testes passaram; `py_compile`, `node --check` e `git diff --check` passaram.
+- CHAT IA real por API e tarefa Codex em projeto temporário foram executados; configuração externa de IA não teve chamada real por falta de par credencial/modelo validado.
+- APK debug compilado pelo Gradle com override AAPT2 e verificado por integridade ZIP e presença de Manifest, DEX e assets.
+- APK `android/app/build/outputs/apk/debug/app-debug.apk`: 48.161 bytes; SHA-256 `5858606ac9e98d2ca81b6f39225edba04cc1db0bae64d839b6d5f95a2a760c8d`.
+- Backup integral e backup anterior preservados. Nenhum APK instalado em aparelho porque ADB/dispositivo não estavam disponíveis.
+
 ## 2026-11-09 — Etapa 1
 
 - Criado backup completo com nome único fora do checkout e acesso restrito.
