@@ -29,3 +29,17 @@ O trabalho será feito em etapas sequenciais. Cada etapa termina com testes, atu
 - Credenciais/modelos dos provedores para chamadas reais.
 - Codex CLI autenticado para teste real na etapa 6.
 - Android SDK/Gradle e dispositivo Android para validação de instalação, WebView e Termux:RUN_COMMAND.
+
+## Reformulação da experiência OFFTEC HUB 2.2
+
+Base preservada: commit `25b1764c15183e7d57ec48fe6a382a12d706906d`. Backup integral externo e verificado no caminho indicado em `PROGRESS.md`.
+
+| Fase | Entrega | Verificação |
+|---|---|---|
+| A. Serviços compartilhados | Consolidar o acesso às configurações de IA já existentes sem migrar/remover credenciais; expandir provedores (OpenRouter/custom OpenAI-compatible); catálogo de modelos e seleção padrão; APIs seguras para projetos autorizados e arquivos/workspaces. | Testes de CRUD legado, modelos, credenciais ocultas, catálogo autenticado e validação de paths. |
+| B. Fluxos de conversa | Manter CHAT IA com a API global e histórico próprio; dar ao Codex chat completo, independente, persistente e baseado em execuções reais do Codex CLI; contextos podem começar sem projeto e projetos são escolhidos por lista. | Cobertura mockada separada por chat e teste real Codex somente se CLI autenticado/funcional. |
+| C. Interface e seleção | Aba exclusiva Configuração de IA; CHAT IA em página própria; Codex em chat separado; atalhos de projetos/arquivos e eliminação progressiva de campos path duplicados; estados loading/erro/cancelamento. | Auditoria dos controles e fluxos no frontend, parser JS e build Android. |
+| D. Integração de ferramentas | Reutilizar o serviço global nas funções inteligentes compatíveis, com degradação explícita para integrações externas que tenham configuração/contrato próprio. | Matriz ferramenta → backend → dependências; não inferir sucesso por renderização/import. |
+| E. Fechamento | Executar suítes, smokes isolados, build APK, atualizar os três relatórios e commit por fase. | `pytest`, validação JS/Python, Gradle com override AAPT2, `git status` limpo e hash/artefato. |
+
+Limite de segurança: o Codex nunca recebe automaticamente modos de bypass; escrita permanece confirmada e isolada em cópia. Um projeto ausente dá acesso de conversa somente leitura a um workspace vazio. Nenhuma chamada via API global substitui o Codex real.

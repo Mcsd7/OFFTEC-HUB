@@ -176,3 +176,12 @@
 - Build Android debug: **BUILD SUCCESSFUL**, override AAPT2 existente. APK: `android/app/build/outputs/apk/debug/app-debug.apk`, 44.770 bytes, SHA-256 `e8544011baaf3e9751e1a2fd79d0b6a27006a1552a6da309f26b778700399853`; ZIP/APK contém Manifest, DEX e a nova interface Codex.
 - Em tarefas reais, Codex ainda emitiu avisos de duas entradas antigas `projects.*.approval_policy`/`sandbox_mode` em `~/.codex/config.toml`; não alterei essa configuração do usuário.
 - Checkpoint pré-alteração e commits de backend/interface identificados acima; commit de fechamento registrado após esta atualização.
+
+## Reformulação da experiência — auditoria e checkpoints
+
+- Início sobre o checkpoint preservado `25b1764c15183e7d57ec48fe6a382a12d706906d`; árvore Git estava limpa (`main`, ahead 14 de origin).
+- Backup novo integral e verificado: `backup local privado` (312.401.642 bytes, modo `0600`, SHA-256 `[hash omitido]`). Inclui checkout, `.git`, dados ignorados e estado local; o backup anterior não foi alterado.
+- Inventário arquitetural: frontend single-page em `frontend/assets/js/app.js`; API FastAPI em `backend/main.py`; credenciais globais no `backend/providers.py`; histórico comum em SQLite (`backend/database/store.py`); integração Codex isolada em `backend/codex_cli.py`/`services/codex_tasks.py`; seletor Android SAF em `MainActivity.java`.
+- Achados: provedores já têm CRUD e chave protegida, mas a configuração está embutida em Programar com IA; lista de modelos é validada/testada, não oferecida como catálogo selecionável; OFFTEC AI é chat persistente porém ocupa formulário; Codex é um formulário, aparece duplicado dentro de OFFTEC AI, exige path digitado e não tem conversas Codex persistentes. Dev Studio oferece select de projeto mas também caminho manual; APK usa seletor de arquivo WebView; DNS e tradução ainda pedem valores técnicos.
+- Nenhuma configuração local foi lida/exibida ou editada durante o inventário; dados locais e chave existentes permanecem intactos.
+- Etapas seguintes serão divididas em arquitetura/backend compartilhado, experiência/interface com chats separados e verificação/build. Ver detalhes em `IMPLEMENTATION_PLAN.md`.
