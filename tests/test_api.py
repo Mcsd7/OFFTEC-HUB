@@ -923,6 +923,20 @@ def test_visual_project_catalog_detects_authorized_project_types(tmp_path, monke
         assert catalog["HUB"] == "OFFTEC HUB"
 
 
+def test_frontend_separates_global_ai_chat_and_codex_cli_experience():
+    frontend = Path(__file__).parents[1] / "frontend/assets/js/app.js"
+    source = frontend.read_text(encoding="utf-8")
+    assert "['ai-config','Configuração de IA'" in source
+    assert "['chat-ia','Chat IA'" in source
+    assert "['codex','Codex CLI'" in source
+    assert "function renderCodexPanel()" in source
+    assert "function renderPage" in source and "if(id==='chat-ia')return `<section class=\"api-chat\"" in source
+    assert "`${renderCodexPanel()}`" not in source
+    assert 'id="codexPath"' not in source
+    assert 'id="aiProjectPath"' not in source
+    assert 'id="projectPath"' not in source
+
+
 def test_codex_chat_requires_confirmation_for_visual_project_selection(tmp_path, monkeypatch):
     from backend.database import store
     from backend import codex_cli

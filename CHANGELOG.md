@@ -9,6 +9,14 @@
 - Corrigida execução do Codex em workspace vazio com commit Git-base vazio.
 - Testes da fase: 45 passaram; seleção visual classifica projetos autorizados e inclui o workspace do HUB. Tarefa Codex real sem projeto e tarefa real em projeto temporário foram executadas.
 
+## 2026-11-09 — OFFTEC HUB 2.2 · experiência e chats separados
+
+- Navegação separa Configuração de IA, Chat IA por API e Codex CLI real; Codex deixou de ser um formulário embutido no chat convencional.
+- Chat API e Codex exibem conversas, histórico, envio/cancelamento e mensagens de execução. Codex seleciona projeto visualmente ou pode responder sem projeto em modo somente leitura.
+- Codex mostra método/versão/autenticação, eventos/saída/arquivos e permite tentar o fallback; aplicar projeto exige confirmação, salva backups e recusa conflitos.
+- Removidos campos manuais de path no Dev Studio, Programar com IA, Codex e destino de tradução; o seletor APK Android existente foi mantido.
+- 46 ações frontend mapeadas para handlers; WebView Android visual permanece sem teste em aparelho.
+
 ## 2026-11-09 — Etapa 1
 
 - Criado backup completo com nome único fora do checkout e acesso restrito.

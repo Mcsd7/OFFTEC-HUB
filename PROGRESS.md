@@ -195,3 +195,13 @@
 - Corrigido workspace vazio do Codex com commit Git base permitido sem arquivos.
 - Testes de backend após esta fase: **45 passaram**; compilação Python e JavaScript, `node --check` com `LD_LIBRARY_PATH` removido e `git diff --check` passaram. O catálogo visual de projetos detecta tipo e mantém o workspace HUB selecionável.
 - Testes reais do novo fluxo Codex: pergunta via API sem projeto concluída com resposta persistida; tarefa Codex em projeto temporário criou arquivo no workspace isolado e manteve a origem intacta. Os mecanismos main/fallback e seus testes reais anteriores permanecem no checkpoint 2.1.
+
+### Fase B — telas e seleção visual (implementada)
+
+- Navegação agora separa `Configuração de IA`, `Chat IA` e `Codex CLI`. O painel antigo que embutia Codex dentro do chat de API foi removido.
+- Configuração global oferece CRUD/teste, seleção de modelo pela API ou opção personalizada e URL Base automática para endpoints conhecidos. Programar com IA apenas reutiliza o provedor padrão; não pede uma segunda chave.
+- CHAT IA ocupa uma área de conversa dedicada, mantém histórico existente, permite nova conversa/renomear/excluir, seleciona provedores/modelos cadastrados e pode cancelar geração. A geração API permanece sem streaming incremental.
+- Codex agora tem interface de conversa própria com histórico SQLite, projeto visual opcional, modo sem projeto, seletor principal/fallback, status/autenticação, retry fallback, cancelamento, saída real e manifesto. Projetos são executados em cópias; ação separada e confirmada aplica mudanças após verificar baseline e salvar backups.
+- Caminhos manuais removidos de Codex, Dev Studio, Programar com IA e destino de tradução; traduções escolhem destino automaticamente. O seletor Android SAF existente continua selecionando APK.
+- Auditoria estática encontrou 46 ações no dispatcher sem ação ausente; o seletor visual apresenta projetos de `~/Projects` e o workspace `~/HUB`, com tipo detectado. Somente arquivos/pastas nas raízes autorizadas aparecem.
+- Limites para validação final: não há WebView Android/adb disponível para teste visual instalado; não foi feita consulta a API de modelo real porque a configuração local não comprova chave/modelo utilizável. Catálogo real, conexão e traduções têm cobertura mockada.
