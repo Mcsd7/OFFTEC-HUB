@@ -77,3 +77,29 @@
 - Script de inventário encontrou 39 ações `data-action` e zero ações sem handler.
 - Node não executa por símbolo nativo ausente; WebView/dispositivo real não disponível.
 - Codex e chat têm polling/cancelamento, com eventos JSONL Codex apresentados somente no resultado final, não em streaming.
+
+
+## Etapa 10 — auditoria final e APK debug
+
+### Testes executados
+
+- `python -m pytest -q`: **31 passed**, 53 avisos de depreciação (FastAPI/Starlette/asyncio), sem falhas. Abrange API/backend, provedores com mocks, persistência e histórico, tool calling, fluxo de reconstrução/ReaDroid com mocks, OFFTEC AI, Codex com mocks, segurança e paths.
+- `python -m py_compile $(rg --files backend -g '*.py' | sort)`: passou para todos os módulos Python.
+- Parser tree-sitter JavaScript: `frontend/assets/js/app.js` e `frontend/assets/js/diagnostics.js` sem erro sintático.
+- Auditoria estática: controles `data-action`, dispatcher, rotas de API/WebSocket e ponte WebView/Termux revisados; `git diff --check` passou.
+- Smoke test HTTP real em processo isolado com `OFFTEC_HUB_DATA` temporário: `/health`, bootstrap da origem `https://appassets.androidplatform.net`, `/dashboard` com token e CORS, preflight Private Network — respostas 200. O diretório temporário foi encerrado/removido; dados locais existentes não foram utilizados.
+- Adaptadores locais: import de ReaDroid, PortAI e NetScope passou; inventário reportou ReaDroid/PortAI prontos, NetScope disponível somente para leitura e System Monitor pronto. Import não equivale a análise funcional real.
+
+### Limitações de validação real
+
+- Provedores: testes automatizados usam mocks. A configuração local foi preservada, mas possui 17 registros repetidos com o modelo `test-model`; nenhuma chamada externa real foi feita, pois essa configuração não comprova credencial/modelo utilizável. Nenhuma chave foi revelada.
+- Codex CLI: teste real bloqueado pelo wrapper Node instalado, que falha ao iniciar com símbolo C++ nativo ausente (`_ZNSt6__ndk113__hash_memoryEPKvm`). Os fluxos com Codex foram testados com mocks.
+- ReaDroid e PortAI: testes de API do projeto usam adaptadores simulados; não foi realizada análise real de APK nem projeto. NetScope foi importado, mas não foi executada leitura real de conexões. Não havia fixture definida para essas operações e o acesso Android a `/proc/net` pode ser restrito.
+- Android: o APK compilou, mas não foi instalado nem aberto em dispositivo; SAF, Termux:RUN_COMMAND e WebView em Chromium real permanecem pendentes de dispositivo. O smoke HTTP valida o contrato de origem/CORS com o backend, não a execução da ponte dentro do Android.
+
+### Compilação e artefato
+
+- Comando: `gradle -p android :app:assembleDebug -Pandroid.aapt2FromMavenOverride="$PWD/android/aapt2"`.
+- Resultado: **BUILD SUCCESSFUL**, 31 tarefas (3 executadas, 28 atualizadas).
+- APK confirmado e legível como ZIP/APK, contendo Manifest, DEX e assets: `android/app/build/outputs/apk/debug/app-debug.apk`.
+- Tamanho: 43.725 bytes. SHA-256: `e85e44626be09b3553d61cbabb97220a0d73b525113297342a36328076a061a2`.

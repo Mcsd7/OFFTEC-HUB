@@ -53,3 +53,13 @@
 - Adicionados polling, feedback, cancelamento de processo Codex, chat com cancelamento e UI das tarefas.
 - Validado que as ações `data-action` mapeiam para handlers; JavaScript passou no parser tree-sitter.
 - 30 testes passaram. Teste visual em dispositivo continua pendente.
+
+
+## 2026-11-09 — Etapa 10
+
+- Auditoria final dos módulos, ações frontend, APIs, comunicação CORS/WebView e validação de caminhos.
+- Smoke HTTP isolado confirmou health, bootstrap, dashboard autenticado e preflight Private Network.
+- 31 testes passaram; Python compilou; JavaScript passou no parser tree-sitter.
+- Build debug Android concluído com o override AAPT2 local. APK gerado e validado em `android/app/build/outputs/apk/debug/app-debug.apk` (43.725 bytes; SHA-256 `e85e44626be09b3553d61cbabb97220a0d73b525113297342a36328076a061a2`).
+- Limites: sem credenciais de provedor/modelo real utilizáveis; Codex CLI bloqueado pelo runtime Node; análise real ReaDroid/PortAI/NetScope e instalação Android dependem de fixture/aparelho.
+- Configuração local de provedores, dados locais e backup foram preservados; não foram incluídos no commit.

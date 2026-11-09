@@ -2,7 +2,7 @@
 
 ## Estado atual
 
-- Etapa atual: **9 — Segurança e desempenho concluída**; próxima etapa pendente: **10 — testes finais e compilação**.
+- Etapa atual: **10 — testes finais e compilação concluída**.
 - Último checkpoint confirmado antes desta atualização: `d33af9c` (Etapa 8). Etapas 1–8 permanecem registradas nos commits anteriores.
 - A Etapa 10 não foi iniciada nesta sessão, conforme solicitado.
 
@@ -134,3 +134,18 @@
 - Revisão do diff: somente nove arquivos da implementação/testes e este registro de progresso; sem arquivos de segredo ou dados locais incluídos.
 - Checkpoint Git de segurança e desempenho criado junto com este registro; o hash final é confirmado pelo `git log -1`.
 - Próxima atividade: Etapa 10 — auditoria final, testes finais e compilação do APK debug. Ainda não iniciada.
+
+
+### Etapa 10 — testes finais e compilação concluída
+
+- Auditoria final dos módulos e contratos: 40 ações declaradas no frontend; revisão do dispatcher, rotas API, adaptadores locais, autenticação e validação de caminhos. ReaDroid, PortAI e NetScope foram importados com sucesso; módulos locais detectados conforme o ambiente.
+- Testes backend: `python -m pytest -q` — **31 passaram**, 53 avisos de depreciação.
+- Todos os módulos Python passaram em `py_compile`; `frontend/assets/js/app.js` e `diagnostics.js` passaram no parser tree-sitter. `git diff --check` sem erros.
+- Integração HTTP isolada em diretório temporário: health, bootstrap sob origem `appassets.androidplatform.net`, dashboard autenticado/CORS e preflight Private Network responderam 200. Não alterou o banco ou uploads locais.
+- Provedores: cobertura automatizada com mocks aprovada. Configuração local existente foi preservada; suas 17 entradas usam modelo literal `test-model`, portanto não servem para validar credenciais/serviço real. Nenhuma chave foi exibida ou enviada.
+- Codex: integração coberta por mocks; teste real indisponível porque o wrapper Node falha ao carregar símbolo nativo. Foi detectado material de autenticação, sem leitura ou exposição.
+- Integrações ReaDroid/PortAI/NetScope foram importadas, mas não houve análise real de APK, projeto ou captura de rede; não foi fornecido artefato de teste e as permissões dependem do aparelho. Android/WebView não foi instalado em dispositivo.
+- Build: `gradle -p android :app:assembleDebug -Pandroid.aapt2FromMavenOverride="$PWD/android/aapt2"` — **BUILD SUCCESSFUL**. APK validado como ZIP/APK com `AndroidManifest.xml`, `classes.dex` e assets.
+- APK: `android/app/build/outputs/apk/debug/app-debug.apk`, 43.725 bytes, SHA-256 `e85e44626be09b3553d61cbabb97220a0d73b525113297342a36328076a061a2`.
+- Backup existente e dados locais foram preservados. Nenhum arquivo de dados locais entrou no commit.
+- Checkpoint final da Etapa 10: será informado pelo commit desta atualização.
