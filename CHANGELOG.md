@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-11-09 — OFFTEC HUB 2.2 · serviços compartilhados
+
+- OpenRouter e catálogo de modelos API foram integrados ao serviço global de provedores existente; configuração salva permanece no arquivo protegido e a chave não é retornada.
+- PortAI tradução compartilha a API global, com provider offline preservado quando não há configuração. Destino automático exclusivo evita sobrescrever a origem.
+- Adicionado histórico SQLite independente para chat Codex real, incluindo modo sem projeto, contexto recente e continuidade no workspace selecionado.
+- Adicionada aplicação confirmada de alterações Codex, com backup privado, validação de paths e bloqueio de conflito contra arquivos modificados desde a cópia.
+- Corrigida execução do Codex em workspace vazio com commit Git-base vazio.
+- Testes da fase: 45 passaram; seleção visual classifica projetos autorizados e inclui o workspace do HUB. Tarefa Codex real sem projeto e tarefa real em projeto temporário foram executadas.
+
 ## 2026-11-09 — Etapa 1
 
 - Criado backup completo com nome único fora do checkout e acesso restrito.

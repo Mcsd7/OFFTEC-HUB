@@ -15,6 +15,7 @@ DEFAULTS = {
     "gemini": "https://generativelanguage.googleapis.com/v1beta",
     "groq": "https://api.groq.com/openai/v1",
     "openai": "https://api.openai.com/v1",
+    "openrouter": "https://openrouter.ai/api/v1",
     "compatible": "",
 }
 MODEL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$")
@@ -193,6 +194,49 @@ def _model_list(item):
     return {"connected": True, "provider": item["provider"], "model": item["model"], "message": "Conexão confirmada; modelo listado pelo provedor."}
 
 
+def list_models(provider_id):
+    """Return provider model identifiers without exposing credentials or payloads."""
+    item = get_secret(provider_id)
+    models = _fetch_model_names(item)
+    return {"provider_id": provider_id, "models": models, "current_model": item["model"]}
+
+
+def list_draft_models(provider, api_key, base_url=""):
+    if provider not in DEFAULTS:
+        raise ValueError("Provedor não suportado.")
+    api_key = api_key.strip()
+    if not api_key:
+        raise ValueError("Informe a API Key para consultar os modelos.")
+    base = DEFAULTS[provider] if provider != "compatible" else validate(provider, "model-placeholder", base_url)
+    models = _fetch_model_names({"provider": provider, "api_key": api_key, "base_url": base})
+    return {"provider": provider, "models": models}
+
+
+def _fetch_model_names(item):
+    """Query the official/compatible models endpoint and return bounded IDs only."""
+    base, provider = item["base_url"].rstrip("/"), item["provider"]
+    if provider == "gemini":
+        url = f"{base}/models?key={urllib.parse.quote(item['api_key'], safe='')}"
+        headers = {}
+    else:
+        url = f"{base}/models"
+        headers = {"Authorization": f"Bearer {item['api_key']}"}
+    request = urllib.request.Request(url, headers=headers, method="GET")
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            payload = json.loads(response.read(2_000_001).decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        if exc.code in {401, 403}:
+            raise RuntimeError("Autenticação rejeitada pelo provedor (401/403).") from None
+        raise RuntimeError(f"O provedor respondeu HTTP {exc.code} ao consultar modelos.") from None
+    except (OSError, ValueError, UnicodeError) as exc:
+        raise RuntimeError(f"Não foi possível consultar os modelos: {type(exc).__name__}.") from None
+    rows = payload.get("models", []) if provider == "gemini" else payload.get("data", [])
+    models = sorted({str(row.get("name", "")).removeprefix("models/") if provider == "gemini" else str(row.get("id", ""))
+                     for row in rows if isinstance(row, dict)})
+    return [name for name in models if name][:500]
+
+
 def test_saved(provider_id):
     return _model_list(get_secret(provider_id))
 
@@ -254,6 +298,8 @@ def chat(messages, definitions):
             raise RuntimeError("Autenticação rejeitada pelo provedor (401/403).") from None
         if exc.code == 404:
             raise RuntimeError("Modelo ou endpoint não encontrado (404).") from None
+        if exc.code == 400 and definitions:
+            raise RuntimeError("O modelo/provedor recusou tool calling (HTTP 400). Troque para um modelo compatível em Configuração de IA; a conversa textual continua disponível.") from None
         raise RuntimeError(f"Provedor de IA retornou HTTP {exc.code}.") from None
     except (OSError, ValueError, UnicodeError) as exc:
         raise RuntimeError(f"Falha na chamada ao provedor: {type(exc).__name__}.") from None

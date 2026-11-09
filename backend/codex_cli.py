@@ -235,7 +235,7 @@ def _copy_project(source, destination):
         shutil.copyfile(path, target)
     subprocess.run(["git", "init", "-q"], cwd=destination, capture_output=True, timeout=10, check=True)
     subprocess.run(["git", "add", "-A"], cwd=destination, capture_output=True, timeout=30, check=True)
-    subprocess.run(["git", "-c", "user.name=OFFTEC HUB", "-c", "user.email=offtec@localhost", "commit", "-qm", "workspace baseline"], cwd=destination, capture_output=True, timeout=30, check=True)
+    subprocess.run(["git", "-c", "user.name=OFFTEC HUB", "-c", "user.email=offtec@localhost", "commit", "--allow-empty", "-qm", "workspace baseline"], cwd=destination, capture_output=True, timeout=30, check=True)
 
 
 def _parse_event(line):

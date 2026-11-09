@@ -7,6 +7,7 @@ import os
 import re
 import socket
 import shutil
+import subprocess
 import uuid
 from pathlib import Path
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
@@ -17,7 +18,7 @@ from .config import FRONTEND_DIR, LOG_DIR, MAX_UPLOAD_BYTES, TRANSLATION_DIR, UP
 from .core.events import events
 from .core.system import snapshot
 from .database import store
-from .models import AiProviderConfig, AiProviderUpsert, AiProviderTest, AiProgramRequest, ApkRebuildPlan, ApkRebuildApply, ConversationCreate, ConversationRename, ConversationDelete, ChatMessageRequest, ToolApproval, CodexRunRequest, ProjectCreate, ProjectTestRequest, ToolExecution, ApkOperation, DnsRequest, PackageInstall, ProjectOperation, TranslationApply, TranslationPreview
+from .models import AiProviderConfig, AiProviderUpsert, AiProviderTest, AiProviderModelsRequest, AiProgramRequest, ApkRebuildPlan, ApkRebuildApply, ConversationCreate, ConversationRename, ConversationDelete, ChatMessageRequest, ToolApproval, CodexRunRequest, CodexConversationCreate, CodexChatMessage, CodexApplyRequest, ProjectCreate, ProjectTestRequest, ToolExecution, ApkOperation, DnsRequest, PackageInstall, ProjectOperation, TranslationApply, TranslationPreview
 from . import ai_coding
 from . import providers as provider_store
 from . import tool_registry
@@ -320,19 +321,40 @@ def _safe_output_path(raw: str, source: Path) -> Path:
 
 @app.get("/api/v1/dev/projects", dependencies=[Depends(authorize)])
 def dev_projects():
-    home = Path.home()
+    home = Path.home().resolve()
     roots = [home / "Projects", home / "HUB"]
-    found = []
-    seen = set()
+    ignored = {".git", ".gradle", "node_modules", ".venv", "venv", "build", "dist", "__pycache__"}
+    markers = (("settings.gradle", "Android"), ("settings.gradle.kts", "Android"),
+               ("build.gradle", "Android / Gradle"), ("pyproject.toml", "Python"),
+               ("requirements.txt", "Python"), ("package.json", "Node.js"), ("Cargo.toml", "Rust"))
+    found, seen = [], set()
     for root in roots:
-        if root.is_dir():
-            candidates = [root, *(item for item in root.iterdir() if item.is_dir() and not item.is_symlink())]
-            for item in candidates:
-                resolved = item.resolve()
-                if resolved not in seen:
-                    seen.add(resolved)
-                    found.append({"name": item.name, "path": str(resolved)})
-    return {"projects": found}
+        if not root.is_dir() or root.is_symlink():
+            continue
+        candidates = [root]
+        try:
+            for child in root.iterdir():
+                if child.is_dir() and not child.is_symlink() and not child.name.startswith("."):
+                    candidates.append(child)
+        except OSError:
+            continue
+        for item in candidates:
+            try:
+                resolved = item.resolve(strict=True)
+                if resolved in seen or resolved == home or not (home == resolved or home in resolved.parents):
+                    continue
+                kind = next((label for marker, label in markers if (resolved / marker).is_file()), "Projeto")
+                if (resolved / "android" / "settings.gradle").is_file() or (resolved / "backend").is_dir() and (resolved / "frontend").is_dir():
+                    kind = "OFFTEC HUB" if resolved.name == "HUB" else "Android / backend"
+                if resolved == root.resolve() and root.name == "Projects" and kind == "Projeto":
+                    continue
+                seen.add(resolved)
+                found.append({"name": item.name, "path": str(resolved), "kind": kind})
+                if len(found) >= 200:
+                    return {"projects": found, "truncated": True}
+            except OSError:
+                continue
+    return {"projects": found, "truncated": False}
 
 @app.post("/api/v1/dev/projects", dependencies=[Depends(authorize)])
 def create_project(request: ProjectCreate):
@@ -396,6 +418,24 @@ async def ai_provider_test(request: AiProviderTest):
         raise HTTPException(400, str(exc))
     except RuntimeError as exc:
         return {"connected": False, "message": str(exc)}
+
+@app.get("/api/v1/ai/providers/{provider_id}/models", dependencies=[Depends(authorize)])
+async def ai_provider_models(provider_id: str):
+    try:
+        return await run_blocking(provider_store.list_models, provider_id)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(502, str(exc)) from None
+
+@app.post("/api/v1/ai/providers/models", dependencies=[Depends(authorize)])
+async def ai_provider_draft_models(request: AiProviderModelsRequest):
+    try:
+        return await run_blocking(provider_store.list_draft_models, request.provider, request.api_key, request.base_url)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(502, str(exc)) from None
 
 @app.get("/api/v1/ai/tools", dependencies=[Depends(authorize)])
 def ai_tools_catalog():
@@ -549,11 +589,102 @@ def codex_status():
     from . import codex_cli
     return codex_cli.inspect()
 
+@app.get("/api/v1/codex/conversations", dependencies=[Depends(authorize)])
+def codex_conversation_list():
+    return {"conversations": store.codex_conversation_list()}
+
+@app.post("/api/v1/codex/conversations", dependencies=[Depends(authorize)])
+def codex_conversation_create(request: CodexConversationCreate):
+    project = _project_path(request.path) if request.path else None
+    conversation = store.codex_conversation_create(request.title, str(project) if project else None, request.method)
+    project_path = conversation.pop("project_path", None)
+    conversation["has_project"] = bool(project_path)
+    conversation["project_name"] = Path(project_path).name if project_path else None
+    conversation.pop("workspace_path", None)
+    return conversation
+
+@app.get("/api/v1/codex/conversations/{conversation_id}", dependencies=[Depends(authorize)])
+def codex_conversation_get(conversation_id: str):
+    conversation = store.codex_conversation_get(conversation_id)
+    if not conversation:
+        raise HTTPException(404, "Conversa Codex não encontrada.")
+    # Workspace internals are private implementation details, not UI data.
+    conversation.pop("workspace_path", None)
+    project_path = conversation.pop("project_path", None)
+    conversation["has_project"] = bool(project_path)
+    conversation["project_name"] = Path(project_path).name if project_path else None
+    conversation.pop("workspace_path", None)
+    for message in conversation["messages"]:
+        message["meta"].pop("workspace", None)
+    return conversation
+
+@app.delete("/api/v1/codex/conversations/{conversation_id}", dependencies=[Depends(authorize)])
+def codex_conversation_delete(conversation_id: str, request: ConversationDelete):
+    if not request.confirmed:
+        raise HTTPException(409, "Confirme a exclusão desta conversa.")
+    if not store.codex_conversation_delete(conversation_id):
+        raise HTTPException(404, "Conversa Codex não encontrada.")
+    return {"deleted": True}
+
+@app.post("/api/v1/codex/conversations/{conversation_id}/apply", dependencies=[Depends(authorize)])
+def codex_conversation_apply(conversation_id: str, request: CodexApplyRequest):
+    if not request.confirmed:
+        raise HTTPException(409, "Confirme explicitamente a aplicação das alterações no projeto.")
+    conversation = store.codex_conversation_get(conversation_id)
+    if not conversation or not conversation.get("project_path"):
+        raise HTTPException(409, "Esta conversa não tem um projeto autorizado associado.")
+    latest = next((message for message in reversed(conversation["messages"])
+                   if message["role"] == "assistant" and message["meta"].get("workspace")), None)
+    if not latest or not latest["meta"].get("files"):
+        raise HTTPException(409, "O Codex não retornou arquivos alterados para aplicar.")
+    project = _project_path(conversation["project_path"])
+    from .services.codex_apply import apply_workspace
+    try:
+        result = apply_workspace(project, Path(latest["meta"]["workspace"]), latest["meta"]["files"])
+    except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
+        raise HTTPException(422, f"Não foi possível aplicar o workspace: {type(exc).__name__}.") from None
+    status = "success" if result.get("applied") else "error" if result.get("conflicts") else "success"
+    store.record("codex", "apply_workspace", status,
+                 {"conversation_id": conversation_id, "applied": result.get("applied", []),
+                  "conflicts": result.get("conflicts", []), "skipped": result.get("skipped", [])})
+    store.codex_message_add(conversation_id, "tool", result.get("message", "Aplicação concluída."),
+                            {"apply_result": True, "applied": result.get("applied", []),
+                             "conflicts": result.get("conflicts", []), "skipped": result.get("skipped", [])})
+    return result
+
+@app.post("/api/v1/codex/chat", dependencies=[Depends(authorize)])
+async def codex_chat(request: CodexChatMessage):
+    conversation = store.codex_conversation_get(request.conversation_id)
+    if not conversation:
+        raise HTTPException(404, "Conversa Codex não encontrada.")
+    has_project = bool(conversation.get("project_path"))
+    if has_project and not request.confirmed:
+        raise HTTPException(409, "Confirme que o Codex pode editar a cópia isolada deste projeto.")
+    method = request.method or conversation.get("method", "auto")
+    if method != conversation.get("method"):
+        store.codex_conversation_update_workspace(conversation["id"], conversation.get("workspace_path"), method)
+    source = conversation.get("workspace_path") or conversation.get("project_path")
+    if not source:
+        from . import codex_cli
+        source = codex_cli.CODEX_WORKSPACES / f"chat-{conversation['id']}"
+        source.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if not request.retry:
+        store.codex_message_add(conversation["id"], "user", request.message)
+    from .services import codex_chat_tasks
+    task_id = codex_chat_tasks.start(conversation["id"], request.message, source,
+                                     method, test_only=not has_project)
+    return {"task_id": task_id, "conversation_id": conversation["id"], "status": "running"}
+
 @app.post("/api/v1/codex/test", dependencies=[Depends(authorize)])
 async def codex_test(request: CodexRunRequest):
     if not request.confirmed:
         raise HTTPException(409, "Confirme o teste de leitura no workspace temporário.")
-    project = _project_path(request.path)
+    if request.path:
+        project = _project_path(request.path)
+    else:
+        from . import codex_cli
+        project = codex_cli.CODEX_WORKSPACES / f"read-only-{uuid.uuid4().hex}"
+        project.mkdir(parents=True, mode=0o700)
     from .services import codex_tasks
     task_id = codex_tasks.start(project, "Responda somente CODEX_TEST_OK. Não altere arquivos nem execute comandos.", test_only=True, method=request.method)
     return {"task_id": task_id, "status": "running"}
@@ -562,7 +693,12 @@ async def codex_test(request: CodexRunRequest):
 async def codex_run(request: CodexRunRequest):
     if not request.confirmed:
         raise HTTPException(409, "Confirme a tarefa Codex antes de criar e modificar o workspace.")
-    project = _project_path(request.path)
+    if request.path:
+        project = _project_path(request.path)
+    else:
+        from . import codex_cli
+        project = codex_cli.CODEX_WORKSPACES / f"task-{uuid.uuid4().hex}"
+        project.mkdir(parents=True, mode=0o700)
     from .services import codex_tasks
     task_id = codex_tasks.start(project, request.prompt, test_only=False, method=request.method)
     return {"task_id": task_id, "status": "running"}
@@ -670,10 +806,41 @@ async def translation_preview(request: TranslationPreview):
     session_id = uuid.uuid4().hex
     try:
         Engine, Entry, Result, provider_factory = _translation_types()
-        engine = Engine(provider_factory(), max_files=2000)
+        try:
+            global_ai = provider_store.get_secret()
+        except KeyError:
+            global_ai = None
+        if global_ai:
+            class HubTranslationProvider:
+                name = f"OFFTEC IA global · {global_ai['provider']}"
+
+                def translate(self, entries, target, source):
+                    output = {}
+                    for offset in range(0, len(entries), 40):
+                        rows = [{"id": item.entry_id, "text": item.source, "context": item.context}
+                                for item in entries[offset:offset + 40]]
+                        prompt = ("Traduza os textos do JSON mantendo intactos placeholders, variáveis, tags e IDs. "
+                                  "Responda somente um objeto JSON que associe cada ID à tradução. "
+                                  f"Idioma de origem: {source}; destino: {target}.\n" + json.dumps(rows, ensure_ascii=False))
+                        response = provider_store.chat([
+                            {"role": "system", "content": "Você traduz conteúdo de software. Preserve placeholders exatamente."},
+                            {"role": "user", "content": prompt}], [])
+                        text = response.get("text", "").strip()
+                        text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.I)
+                        decoded = json.loads(text)
+                        if not isinstance(decoded, dict):
+                            raise ValueError("A IA global retornou formato de tradução inválido.")
+                        output.update({str(key): str(value) for key, value in decoded.items() if isinstance(value, str)})
+                    return output
+
+            translation_provider = HubTranslationProvider()
+        else:
+            translation_provider = provider_factory()
+        engine = Engine(translation_provider, max_files=2000)
         result = await run_blocking(engine.scan, root, request.source_language)
         await run_blocking(engine.translate, result, request.targets)
         payload = result.to_dict()
+        TRANSLATION_DIR.mkdir(parents=True, exist_ok=True)
         session_file = TRANSLATION_DIR / f"{session_id}.json"
         session_file.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
         session_file.chmod(0o600)
@@ -705,7 +872,10 @@ async def translation_apply(request: TranslationApply):
         decisions = {(entry.entry_id, language): entry.entry_id in selected for entry in entries for language in request.targets}
         Engine.approve(result, decisions, request.targets)
         project = _project_path(str(result.project))
-        output = _safe_output_path(request.output_dir, project)
+        output = (_safe_output_path(request.output_dir, project) if request.output_dir else
+                  _safe_output_path(str(project.parent / f"{project.name}-localized-{request.session_id[:8]}"), project))
+        if output.exists():
+            raise ValueError("A pasta de saída automática já existe; gere uma nova prévia para escolher outro nome.")
         output.mkdir(parents=True, exist_ok=True)
         translator = Engine(None)
         report = await run_blocking(translator.apply, result, project, output, request.targets)

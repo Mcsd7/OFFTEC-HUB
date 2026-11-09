@@ -13,6 +13,7 @@ PROVIDERS = {
     "gemini": {"base_url": "https://generativelanguage.googleapis.com/v1beta", "style": "gemini"},
     "groq": {"base_url": "https://api.groq.com/openai/v1", "style": "openai"},
     "openai": {"base_url": "https://api.openai.com/v1", "style": "openai"},
+    "openrouter": {"base_url": "https://openrouter.ai/api/v1", "style": "openai"},
     "compatible": {"base_url": "", "style": "openai"},
 }
 
@@ -57,6 +58,8 @@ def _call(prompt):
             raise RuntimeError("Autenticação rejeitada pelo provedor (401/403). Verifique a API Key e as permissões.") from None
         if exc.code == 404:
             raise RuntimeError("Modelo ou endpoint não encontrado (404). Verifique o modelo e a Base URL.") from None
+        if exc.code == 400:
+            raise RuntimeError("O modelo recusou o formato JSON estruturado necessário para programar. Selecione um modelo compatível com saída JSON em Configuração de IA.") from None
         raise RuntimeError(f"Provedor de IA retornou HTTP {exc.code}.") from None
     except (OSError, ValueError) as exc:
         raise RuntimeError(f"Falha na chamada ao provedor de IA: {type(exc).__name__}.") from None

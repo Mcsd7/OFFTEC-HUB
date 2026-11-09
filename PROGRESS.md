@@ -185,3 +185,13 @@
 - Achados: provedores já têm CRUD e chave protegida, mas a configuração está embutida em Programar com IA; lista de modelos é validada/testada, não oferecida como catálogo selecionável; OFFTEC AI é chat persistente porém ocupa formulário; Codex é um formulário, aparece duplicado dentro de OFFTEC AI, exige path digitado e não tem conversas Codex persistentes. Dev Studio oferece select de projeto mas também caminho manual; APK usa seletor de arquivo WebView; DNS e tradução ainda pedem valores técnicos.
 - Nenhuma configuração local foi lida/exibida ou editada durante o inventário; dados locais e chave existentes permanecem intactos.
 - Etapas seguintes serão divididas em arquitetura/backend compartilhado, experiência/interface com chats separados e verificação/build. Ver detalhes em `IMPLEMENTATION_PLAN.md`.
+
+### Fase A — serviços compartilhados e backend (implementada)
+
+- OpenRouter foi adicionado ao provedor global existente; Gemini/Groq/OpenAI/OpenRouter e endpoints OpenAI-compatible/custom usam o mesmo armazenamento protegido. Há consulta de modelos da chave temporária antes do cadastro e atualização de modelos para provedores salvos; respostas e logs de erro não retornam credenciais.
+- A tradução PortAI agora usa a API global cadastrada quando disponível. Sem IA global, mantém o provider offline existente. A pasta de tradução pode ser criada automaticamente, com identificador único e proteção contra sobrescrita.
+- Histórico de conversas Codex usa tabelas SQLite próprias, independente do CHAT IA. Conversas sem projeto executam Codex CLI real com sandbox somente leitura; projeto selecionado exige confirmação e a cópia isolada pode continuar como contexto entre turnos.
+- Adicionada aplicação de alterações do workspace ao projeto original somente após confirmação. O backend verifica conflitos contra o baseline, bloqueia caminhos/symlinks/arquivos secretos, guarda cópias dos arquivos substituídos e desfaz gravações parciais se houver falha.
+- Corrigido workspace vazio do Codex com commit Git base permitido sem arquivos.
+- Testes de backend após esta fase: **45 passaram**; compilação Python e JavaScript, `node --check` com `LD_LIBRARY_PATH` removido e `git diff --check` passaram. O catálogo visual de projetos detecta tipo e mantém o workspace HUB selecionável.
+- Testes reais do novo fluxo Codex: pergunta via API sem projeto concluída com resposta persistida; tarefa Codex em projeto temporário criou arquivo no workspace isolado e manteve a origem intacta. Os mecanismos main/fallback e seus testes reais anteriores permanecem no checkpoint 2.1.

@@ -86,7 +86,8 @@ def test_dns_input_validation_and_lookup():
         assert response.json()["addresses"]
 
 
-def test_portai_project_analysis_and_translation_preview(tmp_path):
+def test_portai_project_analysis_and_translation_preview(tmp_path, monkeypatch):
+    monkeypatch.setattr("backend.providers._read", lambda: {"providers": [], "default_id": None})
     project = tmp_path / "sample"
     project.mkdir()
     (project / "strings.json").write_text('{"welcome":"Welcome to the app"}', encoding="utf-8")
@@ -101,7 +102,8 @@ def test_portai_project_analysis_and_translation_preview(tmp_path):
         assert not preview.json()["entries"][0]["translations"]
 
 
-def test_portai_translation_apply_writes_only_approved_copy(tmp_path):
+def test_portai_translation_apply_writes_only_approved_copy(tmp_path, monkeypatch):
+    monkeypatch.setattr("backend.providers._read", lambda: {"providers": [], "default_id": None})
     import json
     from backend.config import TRANSLATION_DIR
     project = tmp_path / "source"
@@ -764,6 +766,19 @@ def test_codex_workspace_copy_omits_common_secret_files(tmp_path):
     assert not (destination / "signing.pem").exists()
 
 
+def test_codex_chat_supports_an_empty_no_project_workspace(tmp_path, monkeypatch):
+    import subprocess
+    from backend import codex_cli
+    source = tmp_path / "empty-source"
+    source.mkdir()
+    destination = tmp_path / "empty-workspace"
+    monkeypatch.setattr(codex_cli, "CODEX_WORKSPACES", tmp_path)
+    codex_cli._copy_project(source, destination)
+    result = subprocess.run(["git", "rev-parse", "HEAD"], cwd=destination,
+                            capture_output=True, text=True, check=True)
+    assert result.stdout.strip()
+
+
 def test_codex_task_cancel_endpoint_sets_cooperative_process_cancel(tmp_path, monkeypatch):
     import threading
     import time
@@ -828,3 +843,183 @@ def test_project_test_execution_requires_confirmation(tmp_path, monkeypatch):
         assert refused.status_code == 409
         result = c.post("/api/v1/ai/test", headers=auth(), json={**data, "confirmed": True})
         assert result.status_code == 200 and result.json()["passed"] is True
+
+
+def test_openrouter_is_a_global_provider_and_model_catalog_never_returns_key(tmp_path, monkeypatch):
+    from backend import providers
+    monkeypatch.setattr(providers, "AI_CONFIG_PATH", tmp_path / "providers.json")
+    saved = providers.save("Router global", "openrouter", "openai/gpt-4.1-mini", "secret-test-key")
+    assert saved["default_id"] == saved["providers"][0]["id"]
+    request_seen = {}
+
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def read(self, limit): return b'{"data":[{"id":"openai/gpt-4.1-mini"},{"id":"google/gemini-2.5-flash"}]}'
+
+    def fake_urlopen(request, timeout):
+        request_seen["url"] = request.full_url
+        request_seen["authorization"] = request.get_header("Authorization")
+        return Response()
+
+    monkeypatch.setattr(providers.urllib.request, "urlopen", fake_urlopen)
+    result = providers.list_models(saved["default_id"])
+    assert result["models"] == ["google/gemini-2.5-flash", "openai/gpt-4.1-mini"]
+    assert request_seen["url"] == "https://openrouter.ai/api/v1/models"
+    assert request_seen["authorization"] == "Bearer secret-test-key"
+    assert "secret-test-key" not in str(result)
+    assert "secret-test-key" not in str(providers.status())
+    draft = providers.list_draft_models("openrouter", "temporary-draft-key")
+    assert draft["models"] == result["models"]
+    assert "temporary-draft-key" not in str(draft)
+    assert request_seen["authorization"] == "Bearer temporary-draft-key"
+
+
+def test_codex_chat_without_project_is_persistent_and_read_only(tmp_path, monkeypatch):
+    from backend.database import store
+    from backend import main, codex_cli
+    monkeypatch.setattr(store, "DB_PATH", tmp_path / "hub.sqlite3")
+    monkeypatch.setattr(codex_cli, "CODEX_WORKSPACES", tmp_path / "workspaces")
+    store.initialize()
+    called = {}
+    monkeypatch.setattr("backend.services.codex_chat_tasks.start",
+                        lambda conversation_id, prompt, source, method, test_only: called.update(
+                            conversation_id=conversation_id, prompt=prompt, source=source,
+                            method=method, test_only=test_only) or "task-real-cli")
+    with client() as c:
+        created = c.post("/api/v1/codex/conversations", headers=auth(), json={"title": "Pergunta sem projeto"})
+        assert created.status_code == 200
+        conversation_id = created.json()["id"]
+        result = c.post("/api/v1/codex/chat", headers=auth(), json={
+            "conversation_id": conversation_id, "message": "Explique API REST"})
+        assert result.status_code == 200, result.text
+        assert result.json()["task_id"] == "task-real-cli"
+        assert called["test_only"] is True
+        assert Path(called["source"]).is_dir()
+        assert "Explique API REST" in called["prompt"]
+        conversation = c.get(f"/api/v1/codex/conversations/{conversation_id}", headers=auth()).json()
+        assert conversation["has_project"] is False
+        assert conversation["messages"][0]["content"] == "Explique API REST"
+        assert str(tmp_path) not in str(conversation)
+
+
+def test_visual_project_catalog_detects_authorized_project_types(tmp_path, monkeypatch):
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    projects = tmp_path / "Projects"
+    android = projects / "Mobile app"
+    android.mkdir(parents=True)
+    (android / "settings.gradle").write_text("rootProject.name='App'", encoding="utf-8")
+    generic = projects / "Sample workspace"
+    generic.mkdir()
+    hub = tmp_path / "HUB"
+    (hub / "backend").mkdir(parents=True)
+    (hub / "frontend").mkdir()
+    with client() as c:
+        response = c.get("/api/v1/dev/projects", headers=auth())
+        assert response.status_code == 200
+        catalog = {item["name"]: item["kind"] for item in response.json()["projects"]}
+        assert catalog["Mobile app"] == "Android"
+        assert catalog["Sample workspace"] == "Projeto"
+        assert catalog["HUB"] == "OFFTEC HUB"
+
+
+def test_codex_chat_requires_confirmation_for_visual_project_selection(tmp_path, monkeypatch):
+    from backend.database import store
+    from backend import codex_cli
+    monkeypatch.setattr(store, "DB_PATH", tmp_path / "hub.sqlite3")
+    monkeypatch.setattr(codex_cli, "CODEX_WORKSPACES", tmp_path / "workspaces")
+    store.initialize()
+    project = tmp_path / "authorized-project"
+    project.mkdir()
+    called = []
+    monkeypatch.setattr("backend.services.codex_chat_tasks.start",
+                        lambda *args, **kwargs: called.append((args, kwargs)) or "task-project")
+    with client() as c:
+        refused_path = c.post("/api/v1/codex/conversations", headers=auth(), json={"path": "/etc"})
+        assert refused_path.status_code == 400
+        created = c.post("/api/v1/codex/conversations", headers=auth(), json={"path": str(project)})
+        assert created.status_code == 200
+        conversation_id = created.json()["id"]
+        no_confirmation = c.post("/api/v1/codex/chat", headers=auth(), json={
+            "conversation_id": conversation_id, "message": "Ajuste o código"})
+        assert no_confirmation.status_code == 409
+        assert called == []
+        accepted = c.post("/api/v1/codex/chat", headers=auth(), json={
+            "conversation_id": conversation_id, "message": "Ajuste o código", "confirmed": True})
+        assert accepted.status_code == 200
+        assert called and called[0][1]["test_only"] is False
+        conversation = c.get(f"/api/v1/codex/conversations/{conversation_id}", headers=auth()).json()
+        assert conversation["has_project"] is True
+        assert str(project) not in str(conversation)
+
+
+def test_translation_uses_global_ai_provider_when_configured(tmp_path, monkeypatch):
+    from backend import main, providers
+    from backend.database import store
+    from backend.config import TRANSLATION_DIR
+    project = tmp_path / "translation-source"
+    project.mkdir()
+    (project / "strings.json").write_text('{"welcome":"Welcome"}', encoding="utf-8")
+    monkeypatch.setattr(store, "DB_PATH", tmp_path / "history.sqlite3")
+    monkeypatch.setattr(main, "TRANSLATION_DIR", tmp_path / "translation-sessions")
+    monkeypatch.setattr(providers, "get_secret", lambda: {"provider": "openai", "model": "test", "api_key": "never-logged", "base_url": "https://example.invalid/v1"})
+    seen = []
+    def fake_chat(messages, definitions):
+        import json
+        prompt = messages[-1]["content"]
+        seen.append(prompt)
+        rows = json.loads(prompt.rsplit("\n", 1)[1])
+        return {"text": json.dumps({row["id"]: "Boas-vindas" for row in rows}), "tool_calls": []}
+    monkeypatch.setattr(providers, "chat", fake_chat)
+    with client() as c:
+        preview = c.post("/api/v1/dev/translation/preview", headers=auth(), json={"path": str(project), "source_language": "en", "targets": ["pt-BR"]})
+        assert preview.status_code == 200, preview.text
+        result = preview.json()
+        assert result["provider"] == "OFFTEC IA global · openai"
+        assert result["entries"][0]["translations"]["pt-BR"] == "Boas-vindas"
+        assert "Welcome" in seen[0]
+        assert "never-logged" not in str(result)
+        assert "never-logged" not in str(seen)
+
+
+def test_codex_workspace_apply_requires_confirmation_backs_up_and_rejects_conflicts(tmp_path, monkeypatch):
+    import subprocess
+    from backend import codex_cli
+    from backend.database import store
+    monkeypatch.setattr(store, "DB_PATH", tmp_path / "hub.sqlite3")
+    workspaces = tmp_path / "codex-workspaces"
+    monkeypatch.setattr(codex_cli, "CODEX_WORKSPACES", workspaces)
+    store.initialize()
+    project = tmp_path / "authorized"
+    project.mkdir()
+    original = project / "main.py"
+    original.write_text("before = True\n", encoding="utf-8")
+    workspace = workspaces / "run-one"
+    codex_cli._copy_project(project, workspace)
+    (workspace / "main.py").write_text("after = True\n", encoding="utf-8")
+    (workspace / "new.py").write_text("created = True\n", encoding="utf-8")
+    changed = subprocess.run(["git", "status", "--short", "--untracked-files=all"], cwd=workspace,
+                             capture_output=True, text=True, check=True).stdout.splitlines()
+    conversation = store.codex_conversation_create("Apply changes", str(project), "auto")
+    store.codex_conversation_update_workspace(conversation["id"], str(workspace), "main")
+    store.codex_message_add(conversation["id"], "assistant", "Implemented files.",
+                            {"workspace": str(workspace), "files": changed})
+    with client() as c:
+        refused = c.post(f"/api/v1/codex/conversations/{conversation['id']}/apply", headers=auth(), json={"confirmed": False})
+        assert refused.status_code == 409
+        result = c.post(f"/api/v1/codex/conversations/{conversation['id']}/apply", headers=auth(), json={"confirmed": True})
+        assert result.status_code == 200, result.text
+        assert set(result.json()["applied"]) == {"main.py", "new.py"}, result.json()
+        assert result.json()["backup_count"] == 1
+    assert original.read_text(encoding="utf-8") == "after = True\n"
+    assert (project / "new.py").read_text(encoding="utf-8") == "created = True\n"
+    backup = next((workspaces / "_apply_backups").rglob("main.py"))
+    assert backup.read_text(encoding="utf-8") == "before = True\n"
+
+    # A concurrent user edit since the workspace snapshot must prevent all writes.
+    (original).write_text("concurrent user edit\n", encoding="utf-8")
+    conflicted = c.post(f"/api/v1/codex/conversations/{conversation['id']}/apply", headers=auth(), json={"confirmed": True})
+    assert conflicted.status_code == 200
+    assert conflicted.json()["applied"] == []
+    assert set(conflicted.json()["conflicts"]) == {"main.py", "new.py"}
+    assert original.read_text(encoding="utf-8") == "concurrent user edit\n"
