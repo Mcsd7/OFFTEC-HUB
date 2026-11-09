@@ -53,6 +53,16 @@ class ToolExecution(BaseModel):
     arguments: dict = Field(default_factory=dict)
     confirmed: bool = False
 
+class ApkRebuildPlan(BaseModel):
+    operation_id: int = Field(gt=0)
+    request: str = Field(min_length=1, max_length=8000)
+
+class ApkRebuildApply(BaseModel):
+    plan_id: str = Field(regex=r"^[a-f0-9]{32}$")
+    request: str = Field(min_length=1, max_length=8000)
+    confirmed: bool = False
+    allow_build: bool = False
+
 class AiProgramRequest(BaseModel):
     path: str = Field(min_length=1, max_length=2048)
     prompt: str = Field(min_length=1, max_length=12000)

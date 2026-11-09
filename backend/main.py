@@ -16,13 +16,14 @@ from .config import FRONTEND_DIR, LOG_DIR, MAX_UPLOAD_BYTES, TRANSLATION_DIR, UP
 from .core.events import events
 from .core.system import snapshot
 from .database import store
-from .models import AiProviderConfig, AiProviderUpsert, AiProviderTest, AiProgramRequest, ProjectCreate, ProjectTestRequest, ToolExecution, ApkOperation, DnsRequest, PackageInstall, ProjectOperation, TranslationApply, TranslationPreview
+from .models import AiProviderConfig, AiProviderUpsert, AiProviderTest, AiProgramRequest, ApkRebuildPlan, ApkRebuildApply, ProjectCreate, ProjectTestRequest, ToolExecution, ApkOperation, DnsRequest, PackageInstall, ProjectOperation, TranslationApply, TranslationPreview
 from . import ai_coding
 from . import providers as provider_store
 from . import tool_registry
 from .modules.manager import modules, load_netscope, load_readroid, load_portai
 from .security import session_token
 from .services.tasks import run_blocking
+from .services import rebuild_tasks
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("offtec.hub")
@@ -174,24 +175,64 @@ async def apk_operation(request: ApkOperation):
     if not apk.is_file():
         raise HTTPException(404, "APK enviado não encontrado")
     analyzer = load_readroid()
+    output_root = UPLOAD_DIR / "output" / request.upload_id
+    report_root = UPLOAD_DIR / "reports" / request.upload_id
+    output_root.mkdir(parents=True, exist_ok=True)
+    report_root.mkdir(parents=True, exist_ok=True)
     task_id = uuid.uuid4().hex[:12]
     await events.publish({"type": "progress", "task_id": task_id, "message": "Validando e analisando o arquivo"})
     try:
         if request.action == "inspect":
             result = await run_blocking(analyzer.inspect_apk, apk)
         elif request.action == "manifest":
-            result = await run_blocking(analyzer.analyze_manifest, apk, UPLOAD_DIR / "reports")
+            result = await run_blocking(analyzer.analyze_manifest, apk, report_root)
         elif request.action == "jadx":
-            result = await run_blocking(analyzer.decompile_with_jadx, apk, UPLOAD_DIR / "output")
+            result = await run_blocking(analyzer.decompile_with_jadx, apk, output_root)
         else:
-            result = await run_blocking(analyzer.extract_smali_with_apktool, apk, UPLOAD_DIR / "output")
-        op_id = store.record("apk_lab", request.action, "success", result)
+            result = await run_blocking(analyzer.extract_smali_with_apktool, apk, output_root)
+        op_id = store.record("apk_lab", request.action, "success", {"upload_id": request.upload_id, "result": result})
         await events.publish({"type": "progress", "task_id": task_id, "message": "Operação concluída", "operation_id": op_id})
         return {"operation_id": op_id, "task_id": task_id, "result": result}
     except Exception as exc:
         store.record("apk_lab", request.action, "error", {"error": str(exc)})
         await events.publish({"type": "error", "task_id": task_id, "message": str(exc)})
         raise HTTPException(422, str(exc))
+
+@app.post("/api/v1/apk/rebuild/plan", dependencies=[Depends(authorize)])
+async def apk_rebuild_plan(request: ApkRebuildPlan):
+    if not ai_coding.get_config().get("configured"):
+        raise HTTPException(409, "Configure um provedor de IA antes de solicitar um plano.")
+    try:
+        plan = await run_blocking(__import__("backend.apk_rebuild", fromlist=["create_plan"]).create_plan, request.operation_id, request.request)
+        store.record("apk_rebuild", "plan", "success", {"plan_id": plan["plan_id"], "operation_id": request.operation_id})
+        return plan
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except Exception as exc:
+        store.record("apk_rebuild", "plan", "error", {"operation_id": request.operation_id, "error": type(exc).__name__})
+        raise HTTPException(422, f"Não foi possível montar o plano: {type(exc).__name__}.") from None
+
+@app.post("/api/v1/apk/rebuild/apply", dependencies=[Depends(authorize)])
+async def apk_rebuild_apply(request: ApkRebuildApply):
+    if not request.confirmed:
+        raise HTTPException(409, "Confirme explicitamente o plano antes de criar o workspace.")
+    task_id = rebuild_tasks.start(request.plan_id, request.request, request.allow_build)
+    await events.publish({"type": "progress", "task_id": task_id, "message": "Workspace isolado em preparação"})
+    return {"task_id": task_id, "status": "running"}
+
+@app.get("/api/v1/apk/rebuild/tasks/{task_id}", dependencies=[Depends(authorize)])
+def apk_rebuild_task_status(task_id: str):
+    result = rebuild_tasks.get(task_id)
+    if result is None:
+        raise HTTPException(404, "Tarefa não encontrada.")
+    return result
+
+@app.post("/api/v1/apk/rebuild/tasks/{task_id}/cancel", dependencies=[Depends(authorize)])
+def apk_rebuild_task_cancel(task_id: str):
+    result = rebuild_tasks.cancel(task_id)
+    if result is None:
+        raise HTTPException(404, "Tarefa não encontrada.")
+    return result
 
 @app.get("/api/v1/apk/results", dependencies=[Depends(authorize)])
 def apk_results():

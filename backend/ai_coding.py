@@ -71,7 +71,7 @@ def _call(prompt):
     return result
 
 
-def build_project(project: Path, request: str):
+def build_project(project: Path, request: str, cancel_event=None):
     files = []
     ignored = {".git", ".gradle", "build", "node_modules", ".venv", "venv", "__pycache__", "dist", "target"}
     for path in sorted(project.rglob("*")):
@@ -89,6 +89,8 @@ def build_project(project: Path, request: str):
         context = context[:150_000] + "\n[CONTEXTO TRUNCADO]"
     prompt = f"Tarefa: {request}\n\nArquivos atuais do projeto (JSON):\n{context}\n\nRetorne JSON com summary e files. Para cada arquivo a criar ou alterar, inclua o conteúdo completo. Não altere arquivos de configuração de execução para executar comandos externos."
     result = _call(prompt)
+    if cancel_event is not None and cancel_event.is_set():
+        raise InterruptedError("Operação cancelada antes de gravar qualquer arquivo no workspace.")
     changes = []
     if len(result["files"]) > 40:
         raise RuntimeError("A IA propôs mais de 40 arquivos; nenhuma alteração foi aplicada.")
@@ -103,6 +105,8 @@ def build_project(project: Path, request: str):
             raise RuntimeError(f"Arquivo sai do projeto selecionado: {item['path']}")
         changes.append((dest, item["content"], rel.as_posix()))
     for dest, content, relative in changes:
+        if cancel_event is not None and cancel_event.is_set():
+            raise InterruptedError("Operação cancelada; workspace descartável contém somente alterações parciais.")
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(content, encoding="utf-8")
     return {"summary": str(result.get("summary", "")), "changed_files": [x[2] for x in changes], "file_count": len(changes)}

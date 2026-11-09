@@ -1,5 +1,6 @@
 import io
 import zipfile
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
@@ -257,6 +258,57 @@ def test_ai_tool_confirmation_and_project_analysis(tmp_path, monkeypatch):
         assert analysis.status_code == 200, analysis.text
         assert analysis.json()["executed"] is True
         assert analysis.json()["result"]["tool"] == "OffTec PortAI"
+
+
+def test_realdroid_rebuild_plan_and_apply_use_isolated_copy(tmp_path, monkeypatch):
+    from backend import ai_coding
+    from backend.config import UPLOAD_DIR
+    from backend.main import app
+    import backend.main as main_module
+
+    class Analyzer:
+        @staticmethod
+        def inspect_apk(apk):
+            return {"package": "org.example.demo", "dex_files": [], "manifest": {"present": True}}
+
+    monkeypatch.setattr(main_module, "load_readroid", lambda: Analyzer)
+    monkeypatch.setattr(ai_coding, "get_config", lambda: {"configured": True})
+    monkeypatch.setattr(ai_coding, "_call", lambda prompt: {"summary": "Adicionar uma tela de informações, limitado aos arquivos disponíveis.", "files": []})
+    monkeypatch.setattr(ai_coding, "build_project", lambda workspace, request, cancel_event=None: _write_rebuild_file(workspace))
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w") as apk:
+        apk.writestr("AndroidManifest.xml", "<manifest package='org.example.demo'/>")
+    with client() as c:
+        uploaded = c.post("/api/v1/files/apk", headers=auth(), files={"file": ("original.apk", archive.getvalue(), "application/vnd.android.package-archive")})
+        upload_id = uploaded.json()["upload_id"]
+        original_hash = __import__("hashlib").sha256((UPLOAD_DIR / f"{upload_id}.apk").read_bytes()).hexdigest()
+        analysis = c.post("/api/v1/apk/operations", headers=auth(), json={"upload_id": upload_id, "action": "inspect"})
+        assert analysis.status_code == 200
+        op_id = analysis.json()["operation_id"]
+        plan = c.post("/api/v1/apk/rebuild/plan", headers=auth(), json={"operation_id": op_id, "request": "Adicionar uma tela de informações"})
+        assert plan.status_code == 200, plan.text
+        assert plan.json()["source_recovered"] is False
+        denied = c.post("/api/v1/apk/rebuild/apply", headers=auth(), json={"plan_id": plan.json()["plan_id"], "request": "Aplicar", "confirmed": False})
+        assert denied.status_code == 409
+        started = c.post("/api/v1/apk/rebuild/apply", headers=auth(), json={"plan_id": plan.json()["plan_id"], "request": "Aplicar plano", "confirmed": True})
+        assert started.status_code == 200, started.text
+        state = c.get(f"/api/v1/apk/rebuild/tasks/{started.json()['task_id']}", headers=auth()).json()
+        for _ in range(20):
+            if state["status"] != "running": break
+            import time; time.sleep(0.05)
+            state = c.get(f"/api/v1/apk/rebuild/tasks/{started.json()['task_id']}", headers=auth()).json()
+        assert state["status"] == "completed", state
+        workspace = Path(state["result"]["workspace"])
+        assert workspace.is_dir() and state["result"]["validation"]["workspace_isolated"] is True
+        assert (workspace / "OFFTEC_ANALYSIS.json").is_file()
+        assert (workspace / "modified.txt").read_text() == "AI change"
+        assert __import__("hashlib").sha256((UPLOAD_DIR / f"{upload_id}.apk").read_bytes()).hexdigest() == original_hash
+        assert (UPLOAD_DIR / "output" / upload_id).is_dir()
+
+
+def _write_rebuild_file(workspace):
+    (workspace / "modified.txt").write_text("AI change", encoding="utf-8")
+    return {"summary": "Applied to isolated workspace", "changed_files": ["modified.txt"], "file_count": 1}
 
 
 def test_ai_program_applies_only_relative_files_inside_selected_project(tmp_path, monkeypatch):

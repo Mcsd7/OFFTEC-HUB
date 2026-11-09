@@ -2,7 +2,7 @@
 
 ## Estado atual
 
-- Etapa atual: **4 — ReaDroid com reconstrução assistida por IA**.
+- Etapa atual: **5 — Nova aba OFFTEC AI**.
 - Etapa 1: concluída no checkpoint `39e2619`. Etapa 2: concluída e confirmada no commit imediatamente anterior ao início da Etapa 3.
 - Não iniciar a etapa 2 até o checkpoint da etapa 1 estar confirmado.
 
@@ -69,3 +69,13 @@
 - Endpoint protegido publica o catálogo e valida/executa somente IDs registrados; não aceita comandos shell. Registra sucesso/rejeição/falha no histórico.
 - 18 testes passaram, incluindo execução de métricas/módulos/análise e rejeição de parâmetros extras/operação desconhecida/confirmação ausente.
 - Próximo: implementar plano/workspace isolado de reconstrução assistida; ferramenta ainda não é automaticamente chamada pelo chat, que será integrado na Etapa 5.
+
+### Etapa 4 — concluída com limites declarados
+
+- Resultados ReaDroid agora ficam em diretórios por upload; metadados reais da operação alimentam o plano IA.
+- Criados endpoints de plano, aplicação e estado/cancelamento. O plano exige confirmação antes de copiar arquivos. Workspace isolado do APK original e da análise preservada.
+- UI APK Lab mostra plano, limitações, arquivos e progresso. Build Gradle só roda com autorização explícita, `--offline` e timeout.
+- Cancelamento é cooperativo: impede cópia/escrita no próximo ponto seguro, mas uma chamada HTTP já enviada ao provedor pode terminar antes do estado final.
+- Fontes originais não são declaradas como recuperadas. Análises estáticas/DEX e bibliotecas nativas podem deixar workspace incompleto; build não é garantido.
+- 19 testes passaram, incluindo fluxo com provedor mock, confirmação, cópia isolada e hash do APK original preservado.
+- Próxima atividade: chat/histórico persistente e tool calling na aba OFFTEC AI.

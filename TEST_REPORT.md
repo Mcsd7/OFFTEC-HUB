@@ -38,3 +38,11 @@
 - `python -m pytest -q`: **18 passed**, 35 avisos de depreciação.
 - Cobertura nova: catálogo do registro, chamadas reais de métricas/módulos/análise de projeto, schemas sem parâmetros adicionais, operação não registrada e confirmação obrigatória para criação de projeto.
 - `python -m py_compile backend/tool_registry.py backend/main.py backend/models.py`: passou.
+
+## Etapa 4 — ReaDroid assistido
+
+- `python -m pytest -q`: **19 passed**, 39 avisos de depreciação.
+- Teste mock percorre upload, análise ReaDroid, plano, rejeição sem confirmação e aplicação em cópia; SHA-256 do APK original permanece igual.
+- `py_compile` dos módulos de rebuild, tarefas e rotas: passou.
+- Não foi possível validar JADX/Apktool/compilação de APK real nesta máquina; checkouts externos/credenciais reais indisponíveis.
+- Limite: cancelamento cooperativo não interrompe imediatamente uma chamada HTTP em andamento ao provedor.

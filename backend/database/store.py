@@ -25,3 +25,9 @@ def recent(limit=20):
     with connect() as db:
         rows = db.execute("SELECT * FROM operations ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
     return [{**dict(row), "result": json.loads(row["result"])} for row in rows]
+
+
+def get(operation_id: int):
+    with connect() as db:
+        row = db.execute("SELECT * FROM operations WHERE id = ?", (operation_id,)).fetchone()
+    return {**dict(row), "result": json.loads(row["result"])} if row else None

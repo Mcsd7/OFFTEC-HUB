@@ -22,3 +22,9 @@
 - Criado registro central de operações IA com schemas estritos, allowlist, permissões e confirmação em escrita.
 - Adicionados endpoints de catálogo e execução autenticados, com resultados reais e histórico.
 - Testes: 18 passaram; compilação Python passou.
+
+## 2026-11-09 — Etapa 4
+
+- Resultados ReaDroid isolados por upload e fluxo IA de plano, confirmação e workspace separado.
+- Adicionados estado/cancelamento cooperativo e opção de build Gradle offline com consentimento separado.
+- Testes: 19 passaram; compilação Python passou.
