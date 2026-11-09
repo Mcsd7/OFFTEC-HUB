@@ -17,7 +17,7 @@ from .config import FRONTEND_DIR, LOG_DIR, MAX_UPLOAD_BYTES, TRANSLATION_DIR, UP
 from .core.events import events
 from .core.system import snapshot
 from .database import store
-from .models import AiProviderConfig, AiProviderUpsert, AiProviderTest, AiProgramRequest, ApkRebuildPlan, ApkRebuildApply, ConversationCreate, ConversationRename, ConversationDelete, ChatMessageRequest, ToolApproval, ProjectCreate, ProjectTestRequest, ToolExecution, ApkOperation, DnsRequest, PackageInstall, ProjectOperation, TranslationApply, TranslationPreview
+from .models import AiProviderConfig, AiProviderUpsert, AiProviderTest, AiProgramRequest, ApkRebuildPlan, ApkRebuildApply, ConversationCreate, ConversationRename, ConversationDelete, ChatMessageRequest, ToolApproval, CodexRunRequest, ProjectCreate, ProjectTestRequest, ToolExecution, ApkOperation, DnsRequest, PackageInstall, ProjectOperation, TranslationApply, TranslationPreview
 from . import ai_coding
 from . import providers as provider_store
 from . import tool_registry
@@ -526,6 +526,41 @@ async def ai_conversation_confirm_tool(conversation_id: str, request: ToolApprov
         results.append({"tool_id": item["tool_id"], **result})
     store.message_add(conversation_id, "assistant", "Operação confirmada e executada no backend. Resultado real:\n" + json.dumps(results, ensure_ascii=False))
     return store.conversation_get(conversation_id)
+
+@app.get("/api/v1/codex/status", dependencies=[Depends(authorize)])
+def codex_status():
+    from . import codex_cli
+    return codex_cli.inspect()
+
+@app.post("/api/v1/codex/test", dependencies=[Depends(authorize)])
+async def codex_test(request: CodexRunRequest):
+    if not request.confirmed:
+        raise HTTPException(409, "Confirme o teste de leitura no workspace temporário.")
+    project = _project_path(request.path)
+    from . import codex_cli
+    try:
+        result = await run_blocking(codex_cli.run_task, project, "Responda somente CODEX_TEST_OK. Não altere arquivos nem execute comandos.", True, True)
+        store.record("codex", "smoke_test", result["status"], {"run_id": result["run_id"], "returncode": result["returncode"]})
+        return result
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from None
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+@app.post("/api/v1/codex/run", dependencies=[Depends(authorize)])
+async def codex_run(request: CodexRunRequest):
+    if not request.confirmed:
+        raise HTTPException(409, "Confirme a tarefa Codex antes de criar e modificar o workspace.")
+    project = _project_path(request.path)
+    from . import codex_cli
+    try:
+        result = await run_blocking(codex_cli.run_task, project, request.prompt, True, False)
+        store.record("codex", "exec", result["status"], {"run_id": result["run_id"], "workspace": result["workspace"], "changed_files": result["files"], "returncode": result["returncode"]})
+        return result
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from None
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
 
 @app.put("/api/v1/ai/config", dependencies=[Depends(authorize)])
 def ai_config_save(request: AiProviderConfig):

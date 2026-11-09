@@ -54,3 +54,11 @@
 - `py_compile`: backend alterado passou.
 - Node está instalado, mas falha ao iniciar por símbolo nativo ausente. Esprima disponível no ambiente não entende optional chaining/nullish coalescing já usados pelo frontend; validação sintática JS ainda não disponível.
 - Streaming e dispositivo Android não testados nesta etapa.
+
+## Etapa 6 — Codex CLI
+
+- `python -m pytest -q`: **28 passed**, 51 avisos de depreciação.
+- `py_compile backend/codex_cli.py backend/main.py backend/models.py`: passou.
+- Testes mockados cobrem descoberta de flags/versão, cópia isolada e exclusão de `.env`/chaves; tarefa mock confirma argv fixo sem `--yolo` ou `--full-auto`.
+- Teste real: bloqueado. Executável detectado, mas `codex --version` e `codex --help` falham porque Node não carrega símbolo C++ nativo. Autenticação só pode ser confirmada executando uma tarefa real; permanece sem validação.
+- Sintaxe baseada em OpenAI Docs: `codex exec --json --sandbox workspace-write <prompt>`; implementação ainda exige que a ajuda da instalação confirme esses parâmetros antes de habilitar execução.

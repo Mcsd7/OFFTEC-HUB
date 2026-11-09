@@ -2,7 +2,7 @@
 
 ## Estado atual
 
-- Etapa atual: **6 — Integração do Codex CLI**.
+- Etapa atual: **7 — Integração de todas as ferramentas**.
 - Etapa 1: concluída no checkpoint `39e2619`. Etapa 2: concluída e confirmada no commit imediatamente anterior ao início da Etapa 3.
 - Não iniciar a etapa 2 até o checkpoint da etapa 1 estar confirmado.
 
@@ -89,3 +89,14 @@
 - Testes: 24 passaram, incluindo tool call real via registro com provedor mock, confirmação de escrita, persistência e cancelamento cooperativo.
 - Limitações: streaming não implementado; cancelamento espera a chamada HTTP já enviada retornar antes de descartar resposta/evitar operações posteriores. Arquivos gerados por ferramenta são gravados no workspace de projeto e apresentados como resultado, sem gerenciador de anexos dedicado.
 - Próxima atividade: detectar e encaminhar tarefas ao Codex CLI usando apenas sintaxe verificada localmente.
+
+### Etapa 6 — integração implementada; uso real bloqueado pelo runtime local
+
+- Adicionada tela Codex CLI, diagnóstico, teste de leitura e encaminhamento de tarefas a uma cópia temporária do projeto.
+- Detecção executa `codex --version`, `codex --help` e `codex exec --help`; só habilita tarefa se reconhecer suporte JSONL e sandbox `workspace-write`.
+- Execução usa lista fixa `codex exec --json --sandbox workspace-write PROMPT`, `cwd` restrito à cópia e confirmação explícita. Não usa `--yolo`, `--full-auto`, flags de aprovação automática, shell arbitrário nem altera o projeto original.
+- Copia exclui VCS, builds, dependências pesadas e arquivos comuns de segredos. Registra resposta, eventos JSONL, erros e mudanças; logs privados ficam em modo 0600.
+- OpenAI Docs confirma `codex exec`, progresso `--json`, sandbox e que `--full-auto` não deve mais ser usado: https://learn.chatgpt.com/docs/non-interactive-mode
+- Testes: 28 passaram, incluindo detecção de features com help mockado, execução mockada em cópia, ausência de flags de bypass e exclusão de arquivos secretos.
+- Bloqueio para validação real: `codex` está instalado, mas o wrapper Node falha ao iniciar (`_ZNSt6__ndk113__hash_memoryEPKvm`); versão, ajuda, autenticação e execução real não puderam ser confirmadas. O app reporta indisponível até runtime funcional. O botão de smoke test executará o teste real quando corrigido.
+- Próxima atividade: auditoria funcional dos módulos e ligação contextual com as operações reais disponíveis.

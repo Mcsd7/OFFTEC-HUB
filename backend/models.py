@@ -80,6 +80,11 @@ class ToolApproval(BaseModel):
 class ConversationDelete(BaseModel):
     confirmed: bool = False
 
+class CodexRunRequest(BaseModel):
+    path: str = Field(min_length=1, max_length=2048)
+    prompt: str = Field(min_length=1, max_length=12000)
+    confirmed: bool = False
+
 class AiProgramRequest(BaseModel):
     path: str = Field(min_length=1, max_length=2048)
     prompt: str = Field(min_length=1, max_length=12000)

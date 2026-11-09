@@ -448,6 +448,83 @@ def test_offtec_ai_generation_can_be_cancelled_cooperatively(monkeypatch):
         assert "Geração cancelada" in conversation["messages"][-1]["content"]
 
 
+def test_codex_cli_inspects_help_and_detects_required_features(monkeypatch):
+    import os
+    import subprocess
+    from backend import codex_cli
+    monkeypatch.setattr(codex_cli.shutil, "which", lambda name: "/usr/bin/codex")
+    monkeypatch.setenv("CODEX_API_KEY", "dummy-only-presence")
+
+    def fake_run(command, **kwargs):
+        if command[-1] == "--version": return subprocess.CompletedProcess(command, 0, "codex 9.8.7\n", "")
+        if command[-1] == "--help" and command[1] == "exec": return subprocess.CompletedProcess(command, 0, "Usage: codex exec [--json] [--sandbox workspace-write]", "")
+        return subprocess.CompletedProcess(command, 0, "Commands: exec review", "")
+
+    monkeypatch.setattr(codex_cli.subprocess, "run", fake_run)
+    status = codex_cli.inspect()
+    assert status["functional"] is True
+    assert status["version"] == "codex 9.8.7"
+    assert status["auth_material_present"] is True
+
+
+def test_codex_run_uses_isolated_copy_and_never_disables_approvals(tmp_path, monkeypatch):
+    import json
+    import subprocess
+    from backend import codex_cli
+    source = tmp_path / "source"
+    source.mkdir()
+    original = source / "app.py"
+    original.write_text("original", encoding="utf-8")
+    monkeypatch.setattr(codex_cli, "inspect", lambda: {"functional": True, "auth_material_present": True})
+    monkeypatch.setattr(codex_cli.shutil, "which", lambda name: "/usr/bin/codex")
+
+    def copy_project(src, dest):
+        dest.mkdir(parents=True)
+        (dest / "app.py").write_text("changed copy", encoding="utf-8")
+
+    monkeypatch.setattr(codex_cli, "_copy_project", copy_project)
+    commands = []
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        if command[0] == "/usr/bin/codex":
+            assert "--yolo" not in command and "--full-auto" not in command
+            assert command[command.index("--sandbox") + 1] == "workspace-write"
+            event = {"type": "item.completed", "item": {"type": "agent_message", "text": "Codex response"}}
+            return subprocess.CompletedProcess(command, 0, json.dumps(event) + "\n", "")
+        return subprocess.CompletedProcess(command, 0, " M app.py\n", "")
+
+    monkeypatch.setattr(codex_cli.subprocess, "run", fake_run)
+    result = codex_cli.run_task(source, "Fix app", confirmed=True)
+    assert result["status"] == "success"
+    assert result["response"] == "Codex response"
+    assert result["files"] == [" M app.py"]
+    assert original.read_text() == "original"
+    assert commands[0][1:5] == ["exec", "--json", "--sandbox", "workspace-write"]
+
+
+def test_codex_endpoints_require_confirmation_and_report_current_environment():
+    with client() as c:
+        status = c.get("/api/v1/codex/status", headers=auth())
+        assert status.status_code == 200
+        assert status.json()["installed"] is True
+        refused = c.post("/api/v1/codex/run", headers=auth(), json={"path": "/tmp", "prompt": "inspect", "confirmed": False})
+        assert refused.status_code == 409
+
+
+def test_codex_workspace_copy_omits_common_secret_files(tmp_path):
+    from backend.codex_cli import _copy_project
+    source, destination = tmp_path / "project", tmp_path / "workspace"
+    source.mkdir()
+    (source / "main.py").write_text("print('ok')", encoding="utf-8")
+    (source / ".env").write_text("API_KEY=private", encoding="utf-8")
+    (source / "signing.pem").write_text("private key", encoding="utf-8")
+    _copy_project(source, destination)
+    assert (destination / "main.py").is_file()
+    assert not (destination / ".env").exists()
+    assert not (destination / "signing.pem").exists()
+
+
 def test_ai_program_applies_only_relative_files_inside_selected_project(tmp_path, monkeypatch):
     from backend import ai_coding
     project = tmp_path / "workspace"

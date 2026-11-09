@@ -35,3 +35,9 @@
 - Ações de escrita aguardam confirmação; geração tem status e cancelamento cooperativo.
 - Removido Sysguard-ASM do inventário visível e mantido System Monitor local.
 - Testes: 24 passaram; Python compilou. Streaming permanece pendente.
+
+## 2026-11-09 — Etapa 6
+
+- Criada integração Codex CLI com detecção por versão/ajuda, cópia de projeto isolada, comando fixo JSONL e registro de resultados.
+- Confirmação antes da execução; exclusão de arquivos comuns de segredo e de caches/builds; nenhum modo de aprovação automática.
+- 28 testes passaram. O runtime Codex local não inicia por falha de símbolo nativo Node; teste real permanece indisponível.
