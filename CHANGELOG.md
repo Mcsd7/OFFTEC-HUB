@@ -63,3 +63,14 @@
 - Build debug Android concluído com o override AAPT2 local. APK gerado e validado em `android/app/build/outputs/apk/debug/app-debug.apk` (43.725 bytes; SHA-256 `e85e44626be09b3553d61cbabb97220a0d73b525113297342a36328076a061a2`).
 - Limites: sem credenciais de provedor/modelo real utilizáveis; Codex CLI bloqueado pelo runtime Node; análise real ReaDroid/PortAI/NetScope e instalação Android dependem de fixture/aparelho.
 - Configuração local de provedores, dados locais e backup foram preservados; não foram incluídos no commit.
+
+
+## 2026-11-09 — OFFTEC HUB 2.1 · Codex CLI + Codex Fallback
+
+- Diagnóstico identificou `LD_LIBRARY_PATH` apontando para a libc++ privada do pacote Codex, que não contém o símbolo exigido pelo Node; o wrapper PATH também reintroduz esse caminho para processos filhos. Não foi alterada a instalação global.
+- Integração principal usa o launcher Termux POSIX do pacote. Novo Codex Fallback inicia o ELF `codex.bin` diretamente, com `CODEX_SELF_EXE` e bibliotecas do pacote. Ambos completaram tarefas reais.
+- OFFTEC AI mostra versão, autenticação, método ativo, saúde/erro dos launchers, seleção automática/principal/fallback, teste real read-only, progresso JSONL, resposta, arquivos e cancelamento. Falhas oferecem nova tentativa pelo fallback.
+- Proteções: cópia isolada, validação de projeto existente, sandbox de escrita/read-only, sessão efêmera para smoke test, timeout, cancelamento em grupo e redação de credenciais.
+- 38 testes passaram (12 focados em Codex). Tarefas reais main/fallback e execução API real passaram.
+- Build debug concluído com override AAPT2. APK: `android/app/build/outputs/apk/debug/app-debug.apk` (44.770 bytes; SHA-256 `e8544011baaf3e9751e1a2fd79d0b6a27006a1552a6da309f26b778700399853`).
+- Warnings de chaves `approval_policy`/`sandbox_mode` antigas em `~/.codex/config.toml` permanecem sem alteração.

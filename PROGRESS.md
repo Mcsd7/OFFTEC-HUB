@@ -1,10 +1,10 @@
-# Progresso — OFFTEC HUB 2.0
+# Progresso — OFFTEC HUB 2.1
 
 ## Estado atual
 
-- Etapa atual: **10 — testes finais e compilação concluída**.
-- Último checkpoint confirmado antes desta atualização: `d33af9c` (Etapa 8). Etapas 1–8 permanecem registradas nos commits anteriores.
-- A Etapa 10 não foi iniciada nesta sessão, conforme solicitado.
+- OFFTEC HUB 2.0, etapas 1–10: concluído no checkpoint `a02ad8f`. Esta continuação trata da correção da integração Codex e de um fallback nativo.
+- Checkpoint 2.1 criado antes das alterações: `7e724b1694b0b08da4e87c95396724e22208a538`.
+- Commits de implementação já salvos: `22758bf` (backend/fallback/testes) e `20c767a` (interface). Fechamento e artefato 2.1 seguem abaixo.
 
 ## Estado inicial do Git
 
@@ -149,3 +149,30 @@
 - APK: `android/app/build/outputs/apk/debug/app-debug.apk`, 43.725 bytes, SHA-256 `e85e44626be09b3553d61cbabb97220a0d73b525113297342a36328076a061a2`.
 - Backup existente e dados locais foram preservados. Nenhum arquivo de dados locais entrou no commit.
 - Checkpoint final da Etapa 10: será informado pelo commit desta atualização.
+
+
+## OFFTEC HUB 2.1 — Codex CLI e fallback
+
+### Diagnóstico e causa
+
+- `codex` no PATH é um link para `@mmmbuto/codex-cli-termux/bin/codex.js`, pacote `0.163.0-termux.2`; o binário interno reporta `codex-cli 0.163.0`. Plataforma observada: Termux ARM64, Android API 36; o `codex.bin` declara alvo `aarch64-linux-android` e API mínima 29.
+- A causa do erro era o `LD_LIBRARY_PATH` herdado apontar para o `bin/` do pacote Codex. Essa pasta contém `libc++_shared.so` sem `std::__ndk1::__hash_memory(void const*, unsigned long)`, símbolo solicitado pelo Node 26.13.0. A libc++ do Termux contém o símbolo. `env -u LD_LIBRARY_PATH node --version` e `env -u LD_LIBRARY_PATH codex --version` funcionam; o wrapper Node, porém, recoloca seu caminho privado para processos filhos e uma tarefa real pelo shim ainda falhou com o mesmo erro.
+- O comando `codex` do ambiente global e suas bibliotecas não foram modificados. O OFFTEC usa o launcher POSIX fornecido pelo pacote no caminho principal e invoca `codex.bin` diretamente no Codex Fallback.
+
+### Implementação e execução
+
+- Detecção consulta executável, versão, `--help`, `exec --help` e `login status`; status mostra autenticação, versão, métodos disponíveis e erro detalhado do shim de PATH.
+- Integração principal: launcher Termux incluído no pacote; fallback independente: ELF `codex.bin`, com ambiente nativo configurado (`CODEX_SELF_EXE`, `LD_LIBRARY_PATH`). Seleção automática escolhe um método funcional/autenticado; erro de spawn principal pode tentar fallback antes de iniciar a tarefa; a interface também oferece retry explícito pelo fallback após falha.
+- Execuções usam `exec --json --sandbox workspace-write -C <workspace> <prompt>`. Teste de conexão usa `--sandbox read-only --ephemeral`. Nenhum flag de bypass é usado.
+- stdout JSONL, stderr, eventos, resposta, arquivos alterados e método são publicados no status da tarefa; buffers são limitados e valores semelhantes a credenciais são redigidos. Cancelar encerra o grupo de processos.
+- Nenhuma instalação global, configuração Codex, segredo, dado local ou backup foi editado/removido. Arquivos gerados permanecem no workspace isolado e não substituem o projeto original.
+
+### Validação 2.1
+
+- Tarefas reais pelo launcher principal e pelo binário fallback criaram, respectivamente, `main-real.txt` (`MAIN_OK`) e `fallback-real.txt` (`FALLBACK_OK`) apenas nas cópias isoladas; ambos retornaram resposta e manifesto de arquivo.
+- Uma tarefa real pelo endpoint `/api/v1/codex/run` completou pelo principal com status `success`, 9 eventos retornados, resposta e `api-real.txt` (`API_CODEX_OK`) no workspace temporário. O projeto de origem permaneceu intacto. Dados de API/task usados no smoke ficaram em diretório temporário e foram removidos.
+- `python -m pytest -q`: **38 passaram**, 53 avisos de depreciação. Foco Codex: 12 passaram, incluindo detecção/versão/autenticação, dois launchers, retry pré-spawn, args/sandbox, cancelamento, erros/redaction, arquivos e segurança de paths.
+- Python compilou, `node --check` passou usando `env -u LD_LIBRARY_PATH` (sem alterar o ambiente global), ações frontend mapeadas e `git diff --check` limpo.
+- Build Android debug: **BUILD SUCCESSFUL**, override AAPT2 existente. APK: `android/app/build/outputs/apk/debug/app-debug.apk`, 44.770 bytes, SHA-256 `e8544011baaf3e9751e1a2fd79d0b6a27006a1552a6da309f26b778700399853`; ZIP/APK contém Manifest, DEX e a nova interface Codex.
+- Em tarefas reais, Codex ainda emitiu avisos de duas entradas antigas `projects.*.approval_policy`/`sandbox_mode` em `~/.codex/config.toml`; não alterei essa configuração do usuário.
+- Checkpoint pré-alteração e commits de backend/interface identificados acima; commit de fechamento registrado após esta atualização.

@@ -103,3 +103,36 @@
 - Resultado: **BUILD SUCCESSFUL**, 31 tarefas (3 executadas, 28 atualizadas).
 - APK confirmado e legível como ZIP/APK, contendo Manifest, DEX e assets: `android/app/build/outputs/apk/debug/app-debug.apk`.
 - Tamanho: 43.725 bytes. SHA-256: `e85e44626be09b3553d61cbabb97220a0d73b525113297342a36328076a061a2`.
+
+
+## OFFTEC HUB 2.1 — Codex CLI e Codex Fallback
+
+### Diagnóstico comprovado
+
+- `command -v codex`: `/data/data/com.termux/files/usr/bin/codex`, link para `@mmmbuto/codex-cli-termux/bin/codex.js`, versão de pacote `0.163.0-termux.2`; Node `v26.13.0`. Plataforma Termux `arm64-v8a`, Android API 36; `codex.bin` é ELF AArch64 para Android API 29+.
+- Com o ambiente original, `codex --version` e `codex --help` falhavam ao carregar Node com símbolo `_ZNSt6__ndk113__hash_memoryEPKvm` ausente. `LD_LIBRARY_PATH` continha o `bin/` do pacote Codex. A biblioteca nesse diretório não exporta o símbolo; `/data/data/com.termux/files/usr/lib/libc++_shared.so` exporta. Com `LD_LIBRARY_PATH` removido, Node e comandos de help/status passam.
+- O teste real do shim Node com esse caminho removido ainda falhou ao iniciar subprocesso durante uma tarefa, pois o wrapper injeta novamente o diretório privado para filhos. O launcher POSIX distribuído pelo pacote e o ELF direto foram usados nos métodos do app. Nenhuma alteração foi feita à instalação global.
+
+### Testes executados
+
+- `python -m pytest -q`: **38 passed**, 53 avisos de depreciação já conhecidos (FastAPI/Starlette/asyncio).
+- `python -m pytest -q tests/test_api.py -k 'codex_'`: **12 passed**. Cobertura: descoberta do shim e dos launchers Termux, versão e features reais/falsas, status positivo e negativo de autenticação, método principal, fallback nativo, retry apenas se Popen principal falhar antes da execução, sandbox `read-only`/`workspace-write`, `--ephemeral`, JSONL, stderr, exit code, redaction, cancelamento, confirmação, retorno de arquivos e cópia isolada.
+- Tarefa real pelo launcher principal: **success**; criou `main-real.txt` contendo `MAIN_OK` na cópia e retornou resposta/eventos/manifestações.
+- Tarefa real pelo binário nativo fallback: **success**; criou `fallback-real.txt` contendo `FALLBACK_OK` na cópia e retornou resposta/eventos/manifestações.
+- Teste real via API `/api/v1/codex/run`: **success**, método `main`, 9 eventos observados, resposta real e `api-real.txt` contendo `API_CODEX_OK` no workspace. A origem não foi alterada. O banco/dados desta validação estavam em tempdir.
+- Execuções de escrita usaram `--sandbox workspace-write`; teste de conexão usa `--sandbox read-only --ephemeral`. Nenhum `--yolo`, `--full-auto`, `--approve-for-me` ou `--dangerously-bypass-*` é incluído.
+- `python -m py_compile` de todos os módulos backend: passou. `env -u LD_LIBRARY_PATH node --check` nos dois arquivos JS: passou. Inventário estático: 42 ações frontend, sem handler ausente. `git diff --check`: passou.
+- Build debug: `gradle -p android :app:assembleDebug -Pandroid.aapt2FromMavenOverride="$PWD/android/aapt2"` — **BUILD SUCCESSFUL**, 31 tarefas (3 executadas, 28 atualizadas). APK contém Manifest, DEX e novo painel Codex/Fallback.
+
+### Arquivos e segurança
+
+- Alterações só são executadas na cópia isolada sob `backend/data/codex_workspaces/<run_id>`; o original não é sobrescrito. Retorno inclui resposta, eventos, status, erros redigidos e lista dos arquivos modificados.
+- Processo usa grupo próprio, timeout de 900 segundos e cancelamento por SIGTERM/SIGKILL do grupo. Saída JSONL/stderr tem limite e redação de padrões de credenciais.
+- A configuração Codex contém duas entradas de projeto antigas não reconhecidas (`approval_policy` e `sandbox_mode`); aparecem como avisos na execução. Foram preservadas sem alterações.
+- Não foi feita instalação nem upgrade do Node/Codex global. O comando `codex` lançado diretamente do shell ainda falha enquanto herdar o `LD_LIBRARY_PATH` problemático; a integração OFFTEC usa o launcher nativo funcional e informa a falha detalhada do shim PATH.
+- Teste em WebView/Android instalado não executado; build e assets do APK foram verificados.
+
+### APK
+
+- Caminho: `android/app/build/outputs/apk/debug/app-debug.apk`.
+- Tamanho: 44.770 bytes. SHA-256: `e8544011baaf3e9751e1a2fd79d0b6a27006a1552a6da309f26b778700399853`.
